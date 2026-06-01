@@ -9,7 +9,7 @@ export default function Header({ activeTab, setActiveTab, onOpenSettings }) {
           <Wallet size={24} />
         </div>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">Personal Finance Dashboard</h1>
+          <h1 className="text-xl font-bold">Money Mind</h1>
           <p className="text-muted text-sm">Track your expenses and visualize your spending patterns</p>
         </div>
 
