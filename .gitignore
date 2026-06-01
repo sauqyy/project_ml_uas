@@ -1,0 +1,18 @@
+# Node dependencies
+frontend/node_modules/
+frontend/dist/
+
+# Python dependencies
+backend/venv/
+backend/__pycache__/
+backend/instance/
+backend/.pytest_cache/
+*.pyc
+
+# Local databases
+*.db
+
+# IDEs & System files
+.DS_Store
+.vscode/
+.idea/
