@@ -3,6 +3,7 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import MonthlyView from './components/MonthlyView';
 import WalletView from './components/WalletView';
+import PredictionView from './components/PredictionView';
 import AddExpenseModal from './components/AddExpenseModal';
 import AddIncomeModal from './components/AddIncomeModal';
 import SettingsModal from './components/SettingsModal';
@@ -161,6 +162,12 @@ function App() {
           <MonthlyView
             expenses={expenses}
             onDelete={handleDeleteExpense}
+            currencySymbol={currency.symbol}
+          />
+        ) : activeTab === 'prediction' ? (
+          <PredictionView
+            expenses={expenses}
+            incomes={incomes}
             currencySymbol={currency.symbol}
           />
         ) : (

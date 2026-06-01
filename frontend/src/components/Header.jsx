@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wallet, LayoutDashboard, Calendar, Settings, CreditCard } from 'lucide-react';
+import { Wallet, LayoutDashboard, Calendar, Settings, CreditCard, TrendingUp } from 'lucide-react';
 
 export default function Header({ activeTab, setActiveTab, onOpenSettings }) {
   return (
@@ -39,6 +39,13 @@ export default function Header({ activeTab, setActiveTab, onOpenSettings }) {
         >
           <CreditCard size={16} />
           Wallet
+        </button>
+        <button
+          onClick={() => setActiveTab('prediction')}
+          className={`tab-btn ${activeTab === 'prediction' ? 'active' : ''}`}
+        >
+          <TrendingUp size={16} />
+          Prediksi Keuangan
         </button>
       </div>
     </div>
