@@ -21,8 +21,7 @@ function App() {
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Fetch data on mount
-  useEffect(() => {
+  const loadAllData = () => {
     // 1. Fetch Currency/Settings
     fetch('/api/settings')
       .then(res => {
@@ -49,6 +48,11 @@ function App() {
       })
       .then(data => setIncomes(data))
       .catch(err => console.error("Error fetching incomes:", err));
+  };
+
+  // Fetch data on mount
+  useEffect(() => {
+    loadAllData();
   }, []);
 
   // Handlers
@@ -211,6 +215,7 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         currency={currency}
         setCurrency={handleUpdateCurrency}
+        onUploadSuccess={loadAllData}
       />
     </div>
   );

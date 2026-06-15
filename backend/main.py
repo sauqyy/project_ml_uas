@@ -2,9 +2,14 @@ from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 from sqlalchemy.orm import Session
 import os
+import io
+import csv
+import re
+import pandas as pd
 
 from database import SessionLocal, engine, Base
 import models
+import ai_models
 
 # Initialize DB tables
 Base.metadata.create_all(bind=engine)
@@ -216,6 +221,153 @@ def update_settings():
             "symbol": setting.symbol,
             "name": setting.name
         })
+    finally:
+        db.close()
+
+# --- AI & File Upload API Endpoints ---
+
+@app.route("/api/anomalies", methods=["GET"])
+def get_anomalies():
+    db = get_db()
+    try:
+        expenses = db.query(models.Expense).all()
+        expense_list = []
+        for e in expenses:
+            expense_list.append({
+                "id": e.id,
+                "amount": e.amount,
+                "category": e.category,
+                "desc": e.desc,
+                "date": e.date,
+                "displayDate": e.displayDate
+            })
+        anomalies = ai_models.detect_anomalies_iso_forest(expense_list)
+        return jsonify(anomalies)
+    finally:
+        db.close()
+
+@app.route("/api/forecast", methods=["GET"])
+def get_forecast():
+    db = get_db()
+    try:
+        expenses = db.query(models.Expense).all()
+        expense_list = []
+        for e in expenses:
+            expense_list.append({
+                "id": e.id,
+                "amount": e.amount,
+                "category": e.category,
+                "desc": e.desc,
+                "date": e.date,
+                "displayDate": e.displayDate
+            })
+        forecast = ai_models.get_arima_forecast_5days(expense_list)
+        return jsonify(forecast)
+    finally:
+        db.close()
+
+@app.route("/api/upload", methods=["POST"])
+def upload_csv():
+    if 'file' not in request.files:
+        return jsonify({"detail": "No file part in request"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"detail": "No selected file"}), 400
+        
+    db = get_db()
+    try:
+        # Read and decode CSV file
+        stream = io.StringIO(file.stream.read().decode("utf-8-sig"), newline=None)
+        csv_reader = csv.DictReader(stream)
+        
+        # Verify columns
+        headers = csv_reader.fieldnames
+        if not headers or 'Jumlah' not in headers or 'Transaksi' not in headers:
+            return jsonify({"detail": "Invalid file format. Columns must match the transaction history CSV."}), 400
+            
+        # Clear existing expenses and incomes to load the new data cleanly
+        db.query(models.Expense).delete()
+        db.query(models.Income).delete()
+        db.commit()
+        
+        # Temporary lists to process
+        raw_rows = []
+        for row in csv_reader:
+            raw_rows.append(row)
+            
+        if not raw_rows:
+            return jsonify({"detail": "CSV file is empty"}), 400
+            
+        # Pre-process details for NLP category classifier
+        nlp_inputs = []
+        for row in raw_rows:
+            desc = row.get('Transaksi', '').strip()
+            nlp_inputs.append({"desc": desc})
+            
+        # Classify all descriptions
+        predicted_categories = ai_models.train_and_classify_categories(nlp_inputs)
+        
+        # Parse and save expenses & incomes
+        imported_expenses = 0
+        imported_incomes = 0
+        
+        for idx, row in enumerate(raw_rows):
+            desc = row.get('Transaksi', '').strip()
+            date_str = row.get('Tanggal Transaksi', '').strip()
+            amount_raw = row.get('Jumlah', '').strip()
+            
+            # Clean amount
+            # e.g., -Rp10.400 -> -10400.0, +Rp500.000 -> 500000.0
+            is_negative = '-' in amount_raw
+            cleaned_digits = re.sub(r'[^\d]', '', amount_raw)
+            if not cleaned_digits:
+                amount_val = 0.0
+            else:
+                amount_val = float(cleaned_digits)
+            
+            # Handle date parsing using pandas to handle mixed formatting
+            parsed_dt = pd.to_datetime(date_str, errors='coerce', dayfirst=True)
+            if pd.isna(parsed_dt):
+                # Fallback to general parsing if dayfirst fails
+                parsed_dt = pd.to_datetime(date_str, errors='coerce')
+                if pd.isna(parsed_dt):
+                    parsed_dt = pd.Timestamp.now()
+            
+            formatted_date = parsed_dt.strftime("%Y-%m-%d")
+            display_date = parsed_dt.strftime("%a, %b %d, %Y")
+            
+            if is_negative:
+                # Save as Expense
+                category = predicted_categories[idx] if idx < len(predicted_categories) else 'Lain-lain'
+                expense = models.Expense(
+                    amount=amount_val,
+                    category=category,
+                    desc=desc,
+                    date=formatted_date,
+                    displayDate=display_date
+                )
+                db.add(expense)
+                imported_expenses += 1
+            else:
+                # Save as Income
+                income = models.Income(
+                    amount=amount_val,
+                    source=desc,
+                    date=formatted_date
+                )
+                db.add(income)
+                imported_incomes += 1
+                
+        db.commit()
+        return jsonify({
+            "message": "File uploaded and processed successfully",
+            "expenses_imported": imported_expenses,
+            "incomes_imported": imported_incomes
+        }), 201
+    except Exception as e:
+        db.rollback()
+        print(f"Error parsing uploaded file: {e}")
+        return jsonify({"detail": f"Error parsing uploaded file: {str(e)}"}), 500
     finally:
         db.close()
 

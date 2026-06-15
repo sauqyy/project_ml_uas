@@ -1,16 +1,31 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { TrendingUp, TrendingDown, Sparkles, Sliders, Lightbulb, ShieldCheck, DollarSign } from 'lucide-react';
+import { Sparkles, Sliders, Lightbulb, ShieldCheck } from 'lucide-react';
 
 export default function PredictionView({ expenses = [], incomes = [], currencySymbol = '$' }) {
     // 1. Simulation States
     const [expenseSavingsPercent, setExpenseSavingsPercent] = useState(0); // 0% to 50%
     const [incomeIncreasePercent, setIncomeIncreasePercent] = useState(0);   // 0% to 50%
 
-    // 2. Base Averages from Real User Data (Fall back to mock values if empty)
+    // 2. ARIMA Forecast State
+    const [arimaForecast, setArimaForecast] = useState([]);
+    const [loadingForecast, setLoadingForecast] = useState(false);
+
+    useEffect(() => {
+        setLoadingForecast(true);
+        fetch('/api/forecast')
+            .then(res => {
+                if (!res.ok) throw new Error("Failed to fetch forecast");
+                return res.json();
+            })
+            .then(data => setArimaForecast(data))
+            .catch(err => console.error("Error fetching forecast:", err))
+            .finally(() => setLoadingForecast(false));
+    }, [expenses]);
+
+    // 3. Base Averages from Real User Data (Fall back to mock values if empty)
     const baseMonthlySpend = useMemo(() => {
         if (expenses.length === 0) return 1200; // Mock fallback
-        // Calculate average monthly spend or total spend
         return expenses.reduce((sum, item) => sum + item.amount, 0) || 1200;
     }, [expenses]);
 
@@ -19,7 +34,7 @@ export default function PredictionView({ expenses = [], incomes = [], currencySy
         return incomes.reduce((sum, item) => sum + item.amount, 0) || 5000;
     }, [incomes]);
 
-    // 3. Dynamic Calculation for the next 4 months
+    // 4. Dynamic Calculation for the next 4 months
     const forecastData = useMemo(() => {
         const months = ['Juni', 'Juli', 'Agustus', 'September'];
         
@@ -48,7 +63,7 @@ export default function PredictionView({ expenses = [], incomes = [], currencySy
         });
     }, [baseMonthlySpend, baseMonthlyIncome, expenseSavingsPercent, incomeIncreasePercent]);
 
-    // 4. Summaries and Badging logic based on simulation
+    // 5. Summaries and Badging logic based on simulation
     const currentForecastSpend = forecastData[1]['Estimasi Pengeluaran']; // July forecast
     const currentForecastIncome = forecastData[1]['Estimasi Pendapatan']; // July forecast
     
@@ -109,69 +124,96 @@ export default function PredictionView({ expenses = [], incomes = [], currencySy
             {/* Main Content Grid */}
             <div className="prediction-grid">
                 
-                {/* Left Column: Interactive Simulation Control */}
-                <div className="simulation-panel">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Sliders size={18} className="text-slate-500" />
-                        <h3 className="font-bold text-md text-primary">Panel Simulasi Finansial</h3>
+                {/* Left Column: Interactive Simulation Control & ARIMA Forecast */}
+                <div className="flex flex-col gap-6">
+                    <div className="simulation-panel">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Sliders size={18} className="text-slate-500" />
+                            <h3 className="font-bold text-md text-primary">Panel Simulasi Finansial</h3>
+                        </div>
+
+                        <p className="text-xs text-muted leading-relaxed">
+                            Geser parameter di bawah untuk melihat bagaimana keputusan finansial hari ini memengaruhi saldo masa depan Anda.
+                        </p>
+
+                        <div className="flex flex-col gap-5 mt-2">
+                            {/* Slider 1: Expenses Cut */}
+                            <div className="slider-group">
+                                <div className="slider-header">
+                                    <span>Simulasi Hemat Belanja</span>
+                                    <span className="slider-value">{expenseSavingsPercent}%</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="50" 
+                                    value={expenseSavingsPercent}
+                                    onChange={(e) => setExpenseSavingsPercent(Number(e.target.value))}
+                                    className="slider-input"
+                                />
+                                <span className="text-[10px] text-muted">Mengurangi pengeluaran bulanan tidak wajib.</span>
+                            </div>
+
+                            {/* Slider 2: Income Growth */}
+                            <div className="slider-group">
+                                <div className="slider-header">
+                                    <span>Simulasi Naik Pendapatan</span>
+                                    <span className="slider-value">+{incomeIncreasePercent}%</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="50" 
+                                    value={incomeIncreasePercent}
+                                    onChange={(e) => setIncomeIncreasePercent(Number(e.target.value))}
+                                    className="slider-input"
+                                />
+                                <span className="text-[10px] text-muted">Estimasi kenaikan gaji, bonus, atau investasi.</span>
+                            </div>
+                        </div>
+
+                        <hr className="border-slate-200 my-2" />
+
+                        {/* Simulation Metrics */}
+                        <div className="flex flex-col gap-3">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500">Estimasi Belanja (Juli):</span>
+                                <span className="font-bold text-slate-700">{currencySymbol}{currentForecastSpend.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500">Estimasi Pendapatan (Juli):</span>
+                                <span className="font-bold text-slate-700">{currencySymbol}{currentForecastIncome.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs p-2 rounded-lg bg-indigo-50 border border-indigo-100">
+                                <span className="text-indigo-600 font-semibold">Proyeksi Tabungan Bulanan:</span>
+                                <span className="font-bold text-indigo-700">{currencySymbol}{(currentForecastIncome - currentForecastSpend).toLocaleString()}</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <p className="text-xs text-muted leading-relaxed">
-                        Geser parameter di bawah untuk melihat bagaimana keputusan finansial hari ini memengaruhi saldo masa depan Anda.
-                    </p>
-
-                    <div className="flex flex-col gap-5 mt-2">
-                        {/* Slider 1: Expenses Cut */}
-                        <div className="slider-group">
-                            <div className="slider-header">
-                                <span>Simulasi Hemat Belanja</span>
-                                <span className="slider-value">{expenseSavingsPercent}%</span>
+                    {/* ARIMA Forecast Card */}
+                    <div className="card flex flex-col gap-3" style={{ border: '1px solid rgba(99, 102, 241, 0.2)', background: 'linear-gradient(180deg, #ffffff 0%, rgba(99, 102, 241, 0.02) 100%)' }}>
+                        <div className="flex items-center gap-2">
+                            <Sparkles size={18} className="text-indigo-600" />
+                            <h3 className="font-bold text-md text-primary">ARIMA 5-Day Forecast</h3>
+                        </div>
+                        <p className="text-xs text-muted leading-relaxed">
+                            Model AI ARIMA(1,1,1) menganalisis tren runtun waktu pengeluaran harian Anda untuk memproyeksikan estimasi pengeluaran 5 hari ke depan.
+                        </p>
+                        {loadingForecast ? (
+                            <p className="text-xs text-muted">Calculating forecast...</p>
+                        ) : arimaForecast.length === 0 ? (
+                            <p className="text-xs text-muted">Belum ada data ramalan. Silakan upload berkas riwayat transaksi CSV di Settings.</p>
+                        ) : (
+                            <div className="flex flex-col gap-2 mt-2">
+                                {arimaForecast.map((f, idx) => (
+                                    <div key={idx} className="flex justify-between items-center text-xs p-2 rounded-lg bg-white border border-slate-200 shadow-sm">
+                                        <span className="text-slate-600 font-semibold">{new Date(f.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
+                                        <span className="font-bold text-indigo-700">{currencySymbol}{f.amount.toLocaleString('id-ID')}</span>
+                                    </div>
+                                ))}
                             </div>
-                            <input 
-                                type="range" 
-                                min="0" 
-                                max="50" 
-                                value={expenseSavingsPercent}
-                                onChange={(e) => setExpenseSavingsPercent(Number(e.target.value))}
-                                className="slider-input"
-                            />
-                            <span className="text-[10px] text-muted">Mengurangi pengeluaran bulanan tidak wajib.</span>
-                        </div>
-
-                        {/* Slider 2: Income Growth */}
-                        <div className="slider-group">
-                            <div className="slider-header">
-                                <span>Simulasi Naik Pendapatan</span>
-                                <span className="slider-value">+{incomeIncreasePercent}%</span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min="0" 
-                                max="50" 
-                                value={incomeIncreasePercent}
-                                onChange={(e) => setIncomeIncreasePercent(Number(e.target.value))}
-                                className="slider-input"
-                            />
-                            <span className="text-[10px] text-muted">Estimasi kenaikan gaji, bonus, atau investasi.</span>
-                        </div>
-                    </div>
-
-                    <hr className="border-slate-200 my-2" />
-
-                    {/* Simulation Metrics */}
-                    <div className="flex flex-col gap-3">
-                        <div className="flex justify-between items-center text-xs">
-                            <span className="text-slate-500">Estimasi Belanja (Juli):</span>
-                            <span className="font-bold text-slate-700">{currencySymbol}{currentForecastSpend.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                            <span className="text-slate-500">Estimasi Pendapatan (Juli):</span>
-                            <span className="font-bold text-slate-700">{currencySymbol}{currentForecastIncome.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs p-2 rounded-lg bg-indigo-50 border border-indigo-100">
-                            <span className="text-indigo-600 font-semibold">Proyeksi Tabungan Bulanan:</span>
-                            <span className="font-bold text-indigo-700">{currencySymbol}{(currentForecastIncome - currentForecastSpend).toLocaleString()}</span>
-                        </div>
+                        )}
                     </div>
                 </div>
 
@@ -260,6 +302,7 @@ export default function PredictionView({ expenses = [], incomes = [], currencySy
                                     </p>
                                 </div>
                             </div>
+
                         </div>
                     </div>
 

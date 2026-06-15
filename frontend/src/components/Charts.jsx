@@ -9,7 +9,11 @@ const COLORS = {
     'Bills & Utilities': '#f97316', // Orange
     'Entertainment': '#c084fc', // Purple
     'Healthcare': '#818cf8', // Indigo
-    'Other': '#94a3b8' // Slate
+    'Other': '#94a3b8', // Slate
+    'Transportasi': '#facc15', // Yellow
+    'Makanan': '#3b82f6', // Blue
+    'Kebutuhan': '#10b981', // Emerald
+    'Lain-lain': '#94a3b8' // Slate
 };
 
 // --- Daily Spending Trend Data ---
@@ -157,7 +161,11 @@ export function ExpensesByCategory({ expenses }) {
                         />
                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                         <Tooltip cursor={{ fill: '#f1f5f9' }} />
-                        <Bar dataKey="value" fill="#818cf8" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                            {data.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[entry.name] || COLORS['Other']} />
+                            ))}
+                        </Bar>
                     </BarChart>
                 </ResponsiveContainer>
             </div>

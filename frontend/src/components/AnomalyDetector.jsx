@@ -1,41 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldAlert, AlertTriangle, X, Check, Sparkles } from 'lucide-react';
 
 export default function AnomalyDetector({ expenses = [], currencySymbol = '$' }) {
-    // Initial mock data for dummy anomaly feed
-    const [anomalies, setAnomalies] = useState([
-        {
-            id: 1,
-            type: 'spike',
-            category: 'Food & Dining',
-            title: 'Pengeluaran Tidak Wajar (Spike)',
-            description: `Pengeluaran sebesar ${currencySymbol}120.00 untuk "Makan Malam Mewah" lebih tinggi 3.5x lipat dari rata-rata harian kategori Food & Dining Anda (${currencySymbol}34.00).`,
-            severity: 'high',
-            date: '31 Mei 2026'
-        },
-        {
-            id: 2,
-            type: 'duplicate',
-            category: 'Bills & Utilities',
-            title: 'Kemungkinan Transaksi Ganda',
-            description: `Terdeteksi 2 transaksi identik masing-masing sebesar ${currencySymbol}15.00 untuk "Netflix Subscription" dalam selang waktu hanya 3 menit.`,
-            severity: 'medium',
-            date: '28 Mei 2026'
-        },
-        {
-            id: 3,
-            type: 'recurring',
-            category: 'Entertainment',
-            title: 'Tagihan Baru Terdeteksi',
-            description: `Langganan bulanan baru untuk "Adobe Creative Suite" sebesar ${currencySymbol}49.99 terdeteksi pertama kali. Kami menyarankan untuk memeriksa apakah ini tagihan terotorisasi.`,
-            severity: 'info',
-            date: '25 Mei 2026'
-        }
-    ]);
+    const [anomalies, setAnomalies] = useState([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setLoading(true);
+        fetch('/api/anomalies')
+            .then(res => {
+                if (!res.ok) throw new Error("Failed to fetch anomalies");
+                return res.json();
+            })
+            .then(data => {
+                setAnomalies(data);
+            })
+            .catch(err => console.error("Error fetching anomalies:", err))
+            .finally(() => setLoading(false));
+    }, [expenses]);
 
     const handleDismiss = (id) => {
         setAnomalies(prev => prev.filter(item => item.id !== id));
     };
+
+    if (loading) {
+        return (
+            <div className="card anomaly-container flex items-center justify-center p-6">
+                <p className="text-sm text-muted">Running AI Anomaly Detection...</p>
+            </div>
+        );
+    }
 
     if (anomalies.length === 0) {
         return (
@@ -46,7 +40,7 @@ export default function AnomalyDetector({ expenses = [], currencySymbol = '$' })
                     </div>
                     <h3 className="font-bold text-lg text-primary mt-2">Semua Transaksi Wajar!</h3>
                     <p className="text-sm text-muted" style={{ maxWidth: '400px' }}>
-                        AI tidak mendeteksi adanya pengeluaran tidak biasa atau mencurigakan bulan ini. Kerja bagus dalam menjaga anggaran Anda!
+                        AI Isolation Forest tidak mendeteksi adanya pengeluaran mencurigakan (pencilan) pada transaksi Anda saat ini.
                     </p>
                 </div>
             </div>
@@ -61,7 +55,7 @@ export default function AnomalyDetector({ expenses = [], currencySymbol = '$' })
                     <h3 className="font-bold text-lg">AI Deteksi Anomali</h3>
                     <span className="badge-ai">
                         <span className="pulse-dot"></span>
-                        AI Active
+                        AI Isolation Forest Active
                     </span>
                 </div>
                 <span className="text-xs text-muted font-medium bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
@@ -71,7 +65,7 @@ export default function AnomalyDetector({ expenses = [], currencySymbol = '$' })
 
             <div className="flex flex-col gap-3">
                 {anomalies.map((item) => (
-                    <div key={item.id} className={`anomaly-item severity-${item.severity} flex gap-3 p-3 rounded-lg border`}>
+                    <div key={item.id} className="anomaly-item severity-high flex gap-3 p-3 rounded-lg border">
                         <div className="anomaly-icon-wrapper flex items-start mt-0.5">
                             <AlertTriangle size={18} className="icon-alert" />
                         </div>
