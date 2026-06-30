@@ -10,9 +10,22 @@ const CURRENCIES = [
     { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
 ];
 
-export default function SettingsModal({ isOpen, onClose, currency, setCurrency, onUploadSuccess }) {
+export default function SettingsModal({ isOpen, onClose, currency, setCurrency, onUploadSuccess, onResetData }) {
     const [uploading, setUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState({ success: false, message: '' });
+
+    const handleResetClick = () => {
+        const confirmFirst = window.confirm("Apakah Anda yakin ingin menghapus seluruh data transaksi (Pengeluaran & Pemasukan) Anda?");
+        if (confirmFirst) {
+            const confirmSecond = window.confirm("TINDAKAN INI TIDAK BISA DIBATALKAN! Seluruh riwayat keuangan Anda akan terhapus bersih. Apakah Anda benar-benar yakin?");
+            if (confirmSecond) {
+                onResetData().then(() => {
+                    alert("Seluruh data transaksi berhasil dihapus.");
+                    onClose();
+                });
+            }
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -137,6 +150,59 @@ export default function SettingsModal({ isOpen, onClose, currency, setCurrency, 
                             </div>
                         )}
                     </div>
+                </div>
+
+                <hr className="border-slate-200 my-6" />
+
+                <div className="form-group">
+                    <label className="form-label font-bold mb-1">Export Data</label>
+                    <p className="text-xs text-muted mb-4">
+                        Download all your expenses and incomes (wallet) data as a single CSV file.
+                    </p>
+                    <a
+                        href="/api/export"
+                        download="money_mind_export.csv"
+                        className="btn cursor-pointer text-center py-2.5 rounded-lg flex items-center justify-center gap-2"
+                        style={{
+                            backgroundColor: '#10b981', 
+                            color: '#fff',
+                            display: 'inline-flex',
+                            padding: '0.6rem 1.2rem',
+                            borderRadius: '8px',
+                            fontWeight: 'bold',
+                            border: 'none',
+                            textDecoration: 'none',
+                            outline: 'none'
+                        }}
+                    >
+                        Export as CSV
+                    </a>
+                </div>
+
+                <hr className="border-slate-200 my-6" />
+
+                <div className="form-group">
+                    <label className="form-label font-bold text-red-600 mb-1">Reset Data</label>
+                    <p className="text-xs text-muted mb-4">
+                        Permanently delete all your expense and income records. This action cannot be undone.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={handleResetClick}
+                        className="btn cursor-pointer text-center py-2.5 rounded-lg flex items-center justify-center gap-2"
+                        style={{
+                            backgroundColor: '#ef4444', 
+                            color: '#fff',
+                            display: 'inline-flex',
+                            padding: '0.6rem 1.2rem',
+                            borderRadius: '8px',
+                            fontWeight: 'bold',
+                            border: 'none',
+                            outline: 'none'
+                        }}
+                    >
+                        Delete All Data
+                    </button>
                 </div>
             </div>
         </div>

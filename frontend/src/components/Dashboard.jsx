@@ -4,12 +4,12 @@ import RecentExpenses from './RecentExpenses';
 import { DailySpendingTrend, SpendingByCategory, ExpensesByCategory } from './Charts';
 import AnomalyDetector from './AnomalyDetector';
 
-export default function Dashboard({ expenses, onDelete, totalSpent, transactionCount, avgTransaction, currencySymbol = '$' }) {
+export default function Dashboard({ expenses, onDelete, onEditClick, totalSpent, transactionCount, avgTransaction, currencySymbol = '$' }) {
     return (
         <div className="dashboard-grid h-full">
             {/* Left Column: Recent Expenses LIST */}
             <div className="h-full" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-                <RecentExpenses expenses={expenses} onDelete={onDelete} currencySymbol={currencySymbol} />
+                <RecentExpenses expenses={expenses} onDelete={onDelete} onEditClick={onEditClick} currencySymbol={currencySymbol} />
             </div>
 
             {/* Right Column: Metrics & Charts */}

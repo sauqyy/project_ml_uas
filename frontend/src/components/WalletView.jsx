@@ -12,18 +12,22 @@ export default function WalletView({ incomes, expenses, onOpenAddIncome, onDelet
         const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0;
 
         return {
-            income: totalIncome.toFixed(2),
-            expense: totalExpense.toFixed(2),
-            balance: balance.toFixed(2),
+            income: totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            expense: totalExpense.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            balance: balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
             savingsRate: savingsRate.toFixed(1)
         };
     }, [incomes, expenses]);
 
     // Chart Data (Simple Cash Flow)
-    const chartData = [
-        { name: 'Income', amount: parseFloat(metrics.income), color: '#10b981' }, // Emerald
-        { name: 'Expense', amount: parseFloat(metrics.expense), color: '#ef4444' }, // Red
-    ];
+    const chartData = useMemo(() => {
+        const totalIncome = incomes.reduce((sum, item) => sum + item.amount, 0);
+        const totalExpense = expenses.reduce((sum, item) => sum + item.amount, 0);
+        return [
+            { name: 'Income', amount: totalIncome, color: '#10b981' }, // Emerald
+            { name: 'Expense', amount: totalExpense, color: '#ef4444' }, // Red
+        ];
+    }, [incomes, expenses]);
 
     return (
         <div className="dashboard-grid h-full">
@@ -100,7 +104,7 @@ export default function WalletView({ incomes, expenses, onOpenAddIncome, onDelet
                                         </div>
                                         <div className="flex items-center gap-4">
                                             <div className="font-bold text-emerald-600">
-                                                + {currencySymbol}{inc.amount.toFixed(2)}
+                                                + {currencySymbol}{inc.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </div>
                                             <button
                                                 onClick={() => onDeleteIncome(inc.id)}

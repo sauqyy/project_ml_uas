@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Smartphone, ShoppingBag, Zap, Film, Utensils, Stethoscope, Briefcase } from 'lucide-react';
+import { Trash2, Edit2, Smartphone, ShoppingBag, Zap, Film, Utensils, Stethoscope, Briefcase } from 'lucide-react';
 
 // Icon mapping helper
 const getIcon = (category) => {
@@ -14,7 +14,7 @@ const getIcon = (category) => {
     }
 };
 
-export default function RecentExpenses({ expenses, onDelete, hideHeader = false, currencySymbol = '$' }) {
+export default function RecentExpenses({ expenses, onDelete, onEditClick, hideHeader = false, currencySymbol = '$' }) {
     return (
         <div className={`card h-full overflow-hidden flex flex-col ${hideHeader ? 'border-none shadow-none p-0' : ''}`}>
             {!hideHeader && (
@@ -40,7 +40,7 @@ export default function RecentExpenses({ expenses, onDelete, hideHeader = false,
                                 <div key={expense.id} className="expense-item">
                                     <div className="flex flex-col gap-1">
                                         <div className="flex items-center gap-2">
-                                            <span className="font-bold text-primary">{currencySymbol}{expense.amount.toFixed(2)}</span>
+                                            <span className="font-bold text-primary">{currencySymbol}{expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
                                                 {expense.category}
                                             </span>
@@ -52,13 +52,22 @@ export default function RecentExpenses({ expenses, onDelete, hideHeader = false,
                                         </div>
                                     </div>
 
-                                    <button
-                                        className="icon-btn"
-                                        onClick={() => onDelete(expense.id)}
-                                        title="Delete expense"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    <div className="flex gap-1">
+                                        <button
+                                            className="icon-btn edit-icon-btn"
+                                            onClick={() => onEditClick(expense)}
+                                            title="Edit expense"
+                                        >
+                                            <Edit2 size={16} />
+                                        </button>
+                                        <button
+                                            className="icon-btn"
+                                            onClick={() => onDelete(expense.id)}
+                                            title="Delete expense"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                             );
                         })}

@@ -60,6 +60,20 @@ def seed_db():
             ]
             db.add_all(initial_incomes)
             db.commit()
+
+        # Check categories
+        if db.query(models.Category).count() == 0:
+            default_categories = [
+                models.Category(name="Food & Dining"),
+                models.Category(name="Shopping"),
+                models.Category(name="Transportation"),
+                models.Category(name="Bills & Utilities"),
+                models.Category(name="Entertainment"),
+                models.Category(name="Healthcare"),
+                models.Category(name="Other")
+            ]
+            db.add_all(default_categories)
+            db.commit()
     finally:
         db.close()
 
@@ -123,6 +137,37 @@ def delete_expense(expense_id):
         db.delete(expense)
         db.commit()
         return "", 204
+    finally:
+        db.close()
+
+@app.route("/api/expenses/<int:expense_id>", methods=["PUT"])
+def update_expense(expense_id):
+    data = request.json
+    db = get_db()
+    try:
+        expense = db.query(models.Expense).filter(models.Expense.id == expense_id).first()
+        if not expense:
+            return jsonify({"detail": "Expense not found"}), 404
+        
+        expense.amount = float(data["amount"])
+        expense.category = data["category"]
+        expense.desc = data.get("desc")
+        expense.date = data["date"]
+        if "displayDate" in data:
+            expense.displayDate = data["displayDate"]
+            
+        db.commit()
+        return jsonify({
+            "id": expense.id,
+            "amount": expense.amount,
+            "category": expense.category,
+            "desc": expense.desc,
+            "date": expense.date,
+            "displayDate": expense.displayDate
+        })
+    except Exception as e:
+        db.rollback()
+        return jsonify({"detail": str(e)}), 500
     finally:
         db.close()
 
@@ -368,6 +413,119 @@ def upload_csv():
         db.rollback()
         print(f"Error parsing uploaded file: {e}")
         return jsonify({"detail": f"Error parsing uploaded file: {str(e)}"}), 500
+    finally:
+        db.close()
+
+# Categories Endpoints
+@app.route("/api/categories", methods=["GET"])
+def get_categories():
+    db = get_db()
+    try:
+        categories = db.query(models.Category).all()
+        return jsonify([c.name for c in categories])
+    finally:
+        db.close()
+
+@app.route("/api/categories", methods=["POST"])
+def create_category():
+    data = request.json
+    name = data.get("name", "").strip()
+    if not name:
+        return jsonify({"detail": "Category name cannot be empty"}), 400
+    db = get_db()
+    try:
+        existing = db.query(models.Category).filter(models.Category.name == name).first()
+        if existing:
+            return jsonify({"detail": "Category already exists"}), 400
+        category = models.Category(name=name)
+        db.add(category)
+        db.commit()
+        return jsonify({"name": category.name}), 201
+    except Exception as e:
+        db.rollback()
+        return jsonify({"detail": str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/api/categories/<string:name>", methods=["DELETE"])
+def delete_category(name):
+    db = get_db()
+    try:
+        category = db.query(models.Category).filter(models.Category.name == name).first()
+        if not category:
+            return jsonify({"detail": "Category not found"}), 404
+        db.delete(category)
+        db.commit()
+        return "", 204
+    except Exception as e:
+        db.rollback()
+        return jsonify({"detail": str(e)}), 500
+    finally:
+        db.close()
+
+# Export Data to CSV (Expenses & Incomes in a Single Table)
+@app.route("/api/export", methods=["GET"])
+def export_csv():
+    db = get_db()
+    try:
+        expenses = db.query(models.Expense).order_by(models.Expense.date.desc()).all()
+        incomes = db.query(models.Income).order_by(models.Income.date.desc()).all()
+        
+        # Create an in-memory CSV buffer
+        si = io.StringIO()
+        cw = csv.writer(si)
+        
+        # Header row
+        cw.writerow(["Type", "Date", "Category/Source", "Amount", "Description"])
+        
+        # Combine both datasets
+        all_transactions = []
+        for e in expenses:
+            all_transactions.append({
+                "type": "Expense",
+                "date": e.date,
+                "category": e.category,
+                "amount": -e.amount, # Negative for expenses
+                "desc": e.desc or ""
+            })
+        for i in incomes:
+            all_transactions.append({
+                "type": "Income",
+                "date": i.date,
+                "category": i.source,
+                "amount": i.amount, # Positive for incomes
+                "desc": "Income from Wallet"
+            })
+            
+        # Sort by date descending (newest first)
+        all_transactions.sort(key=lambda x: x['date'], reverse=True)
+        
+        # Write rows
+        for t in all_transactions:
+            cw.writerow([t["type"], t["date"], t["category"], t["amount"], t["desc"]])
+            
+        return si.getvalue(), 200, {
+            "Content-Type": "text/csv",
+            "Content-Disposition": "attachment; filename=money_mind_export.csv"
+        }
+    except Exception as e:
+        print(f"Error exporting CSV: {e}")
+        return jsonify({"detail": str(e)}), 500
+    finally:
+        db.close()
+
+# Reset/Delete All Transaction Data
+@app.route("/api/reset", methods=["POST"])
+def reset_data():
+    db = get_db()
+    try:
+        db.query(models.Expense).delete()
+        db.query(models.Income).delete()
+        db.commit()
+        return jsonify({"message": "All transaction data cleared successfully"}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"detail": str(e)}), 500
     finally:
         db.close()
 

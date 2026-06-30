@@ -9,6 +9,14 @@ export default function AddIncomeModal({ isOpen, onClose, onAdd, currencySymbol 
         amount: '',
         date: new Date().toISOString().split('T')[0]
     });
+    const [displayAmount, setDisplayAmount] = useState('');
+
+    const handleAmountChange = (e) => {
+        const rawValue = e.target.value.replace(/[^\d]/g, ''); // Only digits
+        const formatted = rawValue ? new Intl.NumberFormat('en-US').format(parseInt(rawValue, 10)) : '';
+        setDisplayAmount(formatted);
+        setFormData({ ...formData, amount: rawValue });
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -17,6 +25,7 @@ export default function AddIncomeModal({ isOpen, onClose, onAdd, currencySymbol 
             amount: parseFloat(formData.amount),
         });
         setFormData({ source: '', amount: '', date: new Date().toISOString().split('T')[0] });
+        setDisplayAmount('');
         onClose();
     };
 
@@ -46,13 +55,11 @@ export default function AddIncomeModal({ isOpen, onClose, onAdd, currencySymbol 
                         <label className="form-label">Amount ({currencySymbol})</label>
                         <input
                             required
-                            type="number"
-                            step="0.01"
-                            min="0"
+                            type="text"
                             className="form-input"
-                            placeholder="0.00"
-                            value={formData.amount}
-                            onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                            placeholder="0"
+                            value={displayAmount}
+                            onChange={handleAmountChange}
                         />
                     </div>
 

@@ -80,7 +80,7 @@ def detect_anomalies_iso_forest(expenses):
                     "category": e['category'],
                     "amount": float(e['amount']),
                     "title": "Pengeluaran Tidak Wajar (Anomaly)",
-                    "description": f"Transaksi '{e['desc']}' sebesar {e['amount']} terdeteksi sebagai pengeluaran tidak wajar (pencilan) oleh model AI Isolation Forest.",
+                    "description": f"Transaksi '{e['desc']}' sebesar {float(e['amount']):,.2f} terdeteksi sebagai pengeluaran tidak wajar (pencilan) oleh model AI Isolation Forest.",
                     "severity": "high" if float(e['amount']) > np.percentile(amounts, 90) else "medium",
                     "date": e['date']
                 })

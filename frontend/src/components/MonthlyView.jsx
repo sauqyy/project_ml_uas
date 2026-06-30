@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Wallet, Receipt, P
 import MetricCard from './MetricCard';
 import RecentExpenses from './RecentExpenses';
 
-export default function MonthlyView({ expenses, onDelete, currencySymbol = '$' }) {
+export default function MonthlyView({ expenses, onDelete, onEditClick, currencySymbol = '$' }) {
     const currentDate = new Date();
     const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
     const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
@@ -33,7 +33,7 @@ export default function MonthlyView({ expenses, onDelete, currencySymbol = '$' }
         const categories = new Set(filteredExpenses.map(e => e.category)).size;
 
         return {
-            total: total.toFixed(2),
+            total: total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
             count,
             categories
         };
@@ -78,8 +78,8 @@ export default function MonthlyView({ expenses, onDelete, currencySymbol = '$' }
                             <select
                                 value={selectedMonth}
                                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                                className="p-2 pl-3 pr-8 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors appearance-none"
-                                style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                                className="p-2 pl-3 pr-8 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors"
+                                style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
                             >
                                 {months.map((m, i) => (
                                     <option key={i} value={i}>{m}</option>
@@ -88,8 +88,8 @@ export default function MonthlyView({ expenses, onDelete, currencySymbol = '$' }
                             <select
                                 value={selectedYear}
                                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                                className="p-2 pl-3 pr-8 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors appearance-none"
-                                style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                                className="p-2 pl-3 pr-8 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors"
+                                style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
                             >
                                 {years.map(y => (
                                     <option key={y} value={y}>{y}</option>
@@ -104,7 +104,7 @@ export default function MonthlyView({ expenses, onDelete, currencySymbol = '$' }
                 </div>
 
                 {/* Metrics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="stats-grid">
                     <div className="card p-6 border-l-4 border-l-primary flex items-start justify-between hover:shadow-md transition-shadow">
                         <div>
                             <p className="text-sm font-medium text-muted mb-1">Total Spent</p>
@@ -153,6 +153,7 @@ export default function MonthlyView({ expenses, onDelete, currencySymbol = '$' }
                             <RecentExpenses
                                 expenses={filteredExpenses}
                                 onDelete={onDelete}
+                                onEditClick={onEditClick}
                                 hideHeader={true}
                                 currencySymbol={currencySymbol}
                             />

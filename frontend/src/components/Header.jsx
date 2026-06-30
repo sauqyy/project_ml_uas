@@ -1,7 +1,7 @@
 import React from 'react';
-import { Wallet, LayoutDashboard, Calendar, Settings, CreditCard, TrendingUp } from 'lucide-react';
+import { Wallet, LayoutDashboard, Calendar, Settings, CreditCard, TrendingUp, LogOut } from 'lucide-react';
 
-export default function Header({ activeTab, setActiveTab, onOpenSettings }) {
+export default function Header({ activeTab, setActiveTab, onOpenSettings, onLogout }) {
   return (
     <div className="flex flex-col gap-6 mb-8">
       <div className="flex items-center gap-3">
@@ -15,6 +15,14 @@ export default function Header({ activeTab, setActiveTab, onOpenSettings }) {
 
         <button onClick={onOpenSettings} className="icon-btn p-2 border border-transparent hover:border-slate-200">
           <Settings size={20} />
+        </button>
+        <button
+          onClick={onLogout}
+          className="icon-btn p-2 border border-transparent hover:border-slate-200"
+          title="Logout"
+          style={{ marginLeft: '0.25rem' }}
+        >
+          <LogOut size={20} />
         </button>
       </div>
 

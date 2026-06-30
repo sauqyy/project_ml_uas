@@ -7,11 +7,20 @@ import PredictionView from './components/PredictionView';
 import AddExpenseModal from './components/AddExpenseModal';
 import AddIncomeModal from './components/AddIncomeModal';
 import SettingsModal from './components/SettingsModal';
+import HomePage from './components/HomePage';
+import LoginPage from './components/LoginPage';
+import EditExpenseModal from './components/EditExpenseModal';
 import { Plus } from 'lucide-react';
 
 const DEFAULT_CURRENCY = { code: 'USD', symbol: '$', name: 'US Dollar' };
 
 function App() {
+  // Auth & page state
+  const [currentPage, setCurrentPage] = useState(() => {
+    const session = localStorage.getItem('moneymind_session');
+    return session ? 'app' : 'home';
+  });
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [expenses, setExpenses] = useState([]);
   const [incomes, setIncomes] = useState([]);
@@ -20,6 +29,63 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [categories, setCategories] = useState([]);
+
+  const handleLogin = () => {
+    setCurrentPage('app');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('moneymind_session');
+    setCurrentPage('home');
+    setActiveTab('dashboard');
+  };
+
+  const handleNavigate = (page) => {
+    setCurrentPage(page);
+  };
+
+  const loadCategories = () => {
+    fetch('/api/categories')
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to fetch categories");
+        return res.json();
+      })
+      .then(data => setCategories(data))
+      .catch(err => console.error("Error fetching categories:", err));
+  };
+
+  const handleAddCategory = (name) => {
+    return fetch('/api/categories', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    })
+      .then(res => {
+        if (!res.ok) {
+          return res.json().then(err => { throw new Error(err.detail || "Failed to add category") });
+        }
+        return res.json();
+      })
+      .then(newCat => {
+        setCategories(prev => [...prev, newCat.name]);
+        return newCat.name;
+      });
+  };
+
+  const handleDeleteCategory = (name) => {
+    return fetch(`/api/categories/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to delete category");
+        setCategories(prev => prev.filter(c => c !== name));
+      });
+  };
 
   const loadAllData = () => {
     // 1. Fetch Currency/Settings
@@ -50,10 +116,13 @@ function App() {
       .catch(err => console.error("Error fetching incomes:", err));
   };
 
-  // Fetch data on mount
+  // Fetch data on mount only when logged in
   useEffect(() => {
-    loadAllData();
-  }, []);
+    if (currentPage === 'app') {
+      loadAllData();
+      loadCategories();
+    }
+  }, [currentPage]);
 
   // Handlers
   const handleAddExpense = (newExpense) => {
@@ -103,6 +172,24 @@ function App() {
       .catch(err => console.error("Error deleting expense:", err));
   };
 
+  const handleEditExpense = (id, updatedExpense) => {
+    fetch(`/api/expenses/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updatedExpense),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to update expense");
+        return res.json();
+      })
+      .then(updated => {
+        setExpenses(prev => prev.map(e => e.id === id ? updated : e));
+      })
+      .catch(err => console.error("Error updating expense:", err));
+  };
+
   const handleDeleteIncome = (id) => {
     fetch(`/api/incomes/${id}`, {
       method: 'DELETE',
@@ -112,6 +199,17 @@ function App() {
         setIncomes(prev => prev.filter(i => i.id !== id));
       })
       .catch(err => console.error("Error deleting income:", err));
+  };
+
+  const handleResetData = () => {
+    return fetch('/api/reset', {
+      method: 'POST',
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to reset data");
+        setExpenses([]);
+        setIncomes([]);
+      });
   };
 
   const handleUpdateCurrency = (newCurrency) => {
@@ -138,12 +236,22 @@ function App() {
     const count = expenses.length;
     const avg = count > 0 ? total / count : 0;
     return {
-      total: total.toFixed(2),
+      total: total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       count: count,
-      avg: avg.toFixed(2)
+      avg: avg.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     };
   }, [expenses]);
 
+  // --- Page Routing ---
+  if (currentPage === 'home') {
+    return <HomePage onNavigate={handleNavigate} />;
+  }
+
+  if (currentPage === 'login') {
+    return <LoginPage onLogin={handleLogin} onNavigate={handleNavigate} />;
+  }
+
+  // currentPage === 'app' — main dashboard
   return (
     <div className="min-h-screen p-8 bg-slate-50">
       <div className="container mx-auto p-0" style={{ maxWidth: '1600px' }}>
@@ -151,12 +259,17 @@ function App() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onLogout={handleLogout}
         />
 
         {activeTab === 'dashboard' ? (
           <Dashboard
             expenses={expenses}
             onDelete={handleDeleteExpense}
+            onEditClick={(expense) => {
+              setEditingExpense(expense);
+              setIsEditModalOpen(true);
+            }}
             totalSpent={metrics.total}
             transactionCount={metrics.count}
             avgTransaction={metrics.avg}
@@ -166,6 +279,10 @@ function App() {
           <MonthlyView
             expenses={expenses}
             onDelete={handleDeleteExpense}
+            onEditClick={(expense) => {
+              setEditingExpense(expense);
+              setIsEditModalOpen(true);
+            }}
             currencySymbol={currency.symbol}
           />
         ) : activeTab === 'prediction' ? (
@@ -198,6 +315,9 @@ function App() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onAdd={handleAddExpense}
+        categories={categories}
+        onAddCategory={handleAddCategory}
+        onDeleteCategory={handleDeleteCategory}
         currencySymbol={currency.symbol}
       />
 
@@ -209,6 +329,21 @@ function App() {
         currencySymbol={currency.symbol}
       />
 
+      {/* Edit Expense Modal */}
+      <EditExpenseModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingExpense(null);
+        }}
+        onEdit={handleEditExpense}
+        expense={editingExpense}
+        categories={categories}
+        onAddCategory={handleAddCategory}
+        onDeleteCategory={handleDeleteCategory}
+        currencySymbol={currency.symbol}
+      />
+
       {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -216,6 +351,7 @@ function App() {
         currency={currency}
         setCurrency={handleUpdateCurrency}
         onUploadSuccess={loadAllData}
+        onResetData={handleResetData}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Sparkles, Sliders, Lightbulb, ShieldCheck } from 'lucide-react';
+import { Sparkles, Sliders } from 'lucide-react';
 
 export default function PredictionView({ expenses = [], incomes = [], currencySymbol = '$' }) {
     // 1. Simulation States
@@ -267,42 +267,6 @@ export default function PredictionView({ expenses = [], incomes = [], currencySy
                                     />
                                 </LineChart>
                             </ResponsiveContainer>
-                        </div>
-                    </div>
-
-                    {/* AI Recommendations */}
-                    <div className="flex flex-col gap-3">
-                        <h4 className="font-bold text-sm text-primary px-1">Rekomendasi AI Untuk Mengoptimalkan Saldo</h4>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Card 1 */}
-                            <div className="recommendation-card p-4 flex gap-3 shadow-xs border border-slate-200">
-                                <div className="text-indigo-500 mt-0.5">
-                                    <Lightbulb size={18} />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <span className="font-bold text-xs text-primary">Target Penghematan Kuliner</span>
-                                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                                        Data transaksi Anda menunjukkan pengeluaran 'Food & Dining' bertambah 8% setiap bulan. 
-                                        Mengaktifkan simulasi hemat sebesar 15% berpotensi mengamankan saldo ekstra {currencySymbol}144.00 dalam 3 bulan mendatang.
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Card 2 */}
-                            <div className="recommendation-card p-4 flex gap-3 shadow-xs border border-slate-200" style={{ borderLeftColor: 'var(--success)' }}>
-                                <div className="text-emerald-500 mt-0.5" style={{ color: 'var(--success)' }}>
-                                    <ShieldCheck size={18} />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <span className="font-bold text-xs text-primary">Stabilitas Pengeluaran Rutin</span>
-                                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                                        Biaya rutin bulanan Anda (tagihan listrik & internet) terpantau sangat stabil. 
-                                        Arus kas konstan ini adalah jangkar yang kuat untuk merencanakan investasi atau tabungan jangka panjang.
-                                    </p>
-                                </div>
-                            </div>
-
                         </div>
                     </div>
 
