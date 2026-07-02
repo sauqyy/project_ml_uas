@@ -78,8 +78,8 @@ export default function MonthlyView({ expenses, onDelete, onEditClick, currencyS
                             <select
                                 value={selectedMonth}
                                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                                className="p-2 pl-3 pr-8 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors"
-                                style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                                className="border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors"
+                                style={{ padding: '0.5rem 2rem 0.5rem 0.75rem', appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
                             >
                                 {months.map((m, i) => (
                                     <option key={i} value={i}>{m}</option>
@@ -88,8 +88,8 @@ export default function MonthlyView({ expenses, onDelete, onEditClick, currencyS
                             <select
                                 value={selectedYear}
                                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                                className="p-2 pl-3 pr-8 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors"
-                                style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                                className="border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer hover:border-slate-300 transition-colors"
+                                style={{ padding: '0.5rem 2rem 0.5rem 0.75rem', appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
                             >
                                 {years.map(y => (
                                     <option key={y} value={y}>{y}</option>

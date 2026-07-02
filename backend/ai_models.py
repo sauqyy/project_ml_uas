@@ -55,6 +55,59 @@ def train_and_classify_categories(transactions):
         print(f"Error training NLP model: {e}")
         return rule_labels
 
+def train_and_predict_with_feedback(all_expenses, confirmed_labels_dict):
+    """
+    Trains TF-IDF + Logistic Regression on all expense descriptions.
+    Uses confirmed_labels_dict (user feedback) as the ground truth,
+    and falls back to rule-based labeling for unconfirmed descriptions.
+    """
+    if not all_expenses:
+        return {}
+
+    # Extract unique descriptions
+    unique_descs = list(set(str(e['desc']).strip() for e in all_expenses if e.get('desc')))
+    if not unique_descs:
+        return {}
+
+    # Build training labels
+    y_train = []
+    for desc in unique_descs:
+        if desc in confirmed_labels_dict:
+            y_train.append(confirmed_labels_dict[desc])
+        else:
+            y_train.append(get_category_by_rule(desc))
+
+    # If we don't have enough classes, fall back to rule-based labeling
+    if len(set(y_train)) < 2:
+        # Predict directly using rules / confirmed labels
+        predictions_map = {desc: (confirmed_labels_dict[desc] if desc in confirmed_labels_dict else get_category_by_rule(desc)) for desc in unique_descs}
+        return predictions_map
+
+    try:
+        # Train model
+        vectorizer = TfidfVectorizer(max_features=200)
+        X_train = vectorizer.fit_transform(unique_descs)
+        
+        model = LogisticRegression(max_iter=1000)
+        model.fit(X_train, y_train)
+
+        # Predict for all unique descriptions
+        X_predict = vectorizer.transform(unique_descs)
+        y_pred = model.predict(X_predict)
+
+        # Map description to predicted category
+        predictions_map = {desc: pred for desc, pred in zip(unique_descs, y_pred)}
+        
+        # Overwrite predictions with confirmed labels to guarantee user choices are respected
+        for desc, confirmed_cat in confirmed_labels_dict.items():
+            predictions_map[desc] = confirmed_cat
+
+        return predictions_map
+    except Exception as e:
+        print(f"Error in interactive training: {e}")
+        # Fallback to direct mapping
+        return {desc: (confirmed_labels_dict[desc] if desc in confirmed_labels_dict else get_category_by_rule(desc)) for desc in unique_descs}
+
 # 2. Outlier Detection using Isolation Forest
 def detect_anomalies_iso_forest(expenses):
     """

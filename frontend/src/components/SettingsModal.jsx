@@ -10,9 +10,20 @@ const CURRENCIES = [
     { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
 ];
 
-export default function SettingsModal({ isOpen, onClose, currency, setCurrency, onUploadSuccess, onResetData }) {
+export default function SettingsModal({ isOpen, onClose, currency, setCurrency, onUploadSuccess, onResetData, setIsSecretUnlocked }) {
     const [uploading, setUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState({ success: false, message: '' });
+    const [titleClicks, setTitleClicks] = useState(0);
+
+    const handleTitleClick = () => {
+        const newClicks = titleClicks + 1;
+        setTitleClicks(newClicks);
+        if (newClicks >= 5) {
+            setIsSecretUnlocked(true);
+            alert("✨ Fitur rahasia 'Pelabelan AI' telah aktif! Silakan periksa tab baru di samping 'Prediksi Keuangan' untuk mengonfirmasi kategori transaksi Anda.");
+            onClose(); // Close the settings modal immediately
+        }
+    };
 
     const handleResetClick = () => {
         const confirmFirst = window.confirm("Apakah Anda yakin ingin menghapus seluruh data transaksi (Pengeluaran & Pemasukan) Anda?");
@@ -75,7 +86,13 @@ export default function SettingsModal({ isOpen, onClose, currency, setCurrency, 
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold">Settings</h2>
+                    <h2 
+                        onClick={handleTitleClick} 
+                        className="text-xl font-bold cursor-pointer select-none hover:text-primary transition-colors"
+                        title="Click 5 times for Secret Mode"
+                    >
+                        Settings
+                    </h2>
                     <button onClick={onClose} className="icon-btn">
                         <X size={24} />
                     </button>

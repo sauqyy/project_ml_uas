@@ -10,9 +10,10 @@ import SettingsModal from './components/SettingsModal';
 import HomePage from './components/HomePage';
 import LoginPage from './components/LoginPage';
 import EditExpenseModal from './components/EditExpenseModal';
+import LabelingView from './components/LabelingView';
 import { Plus } from 'lucide-react';
 
-const DEFAULT_CURRENCY = { code: 'USD', symbol: '$', name: 'US Dollar' };
+const DEFAULT_CURRENCY = { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah' };
 
 function App() {
   // Auth & page state
@@ -21,30 +22,62 @@ function App() {
     return session ? 'app' : 'home';
   });
 
+  const [userSession, setUserSession] = useState(() => {
+    const session = localStorage.getItem('moneymind_session');
+    return session ? JSON.parse(session) : null;
+  });
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [expenses, setExpenses] = useState([]);
   const [incomes, setIncomes] = useState([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+  const [categories, setCategories] = useState([]);
+  const [isSecretUnlocked, setIsSecretUnlocked] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
-  const [categories, setCategories] = useState([]);
+  const [telegramStatus, setTelegramStatus] = useState(null);
 
   const handleLogin = () => {
+    const session = localStorage.getItem('moneymind_session');
+    setUserSession(session ? JSON.parse(session) : null);
     setCurrentPage('app');
   };
 
   const handleLogout = () => {
     localStorage.removeItem('moneymind_session');
+    setUserSession(null);
     setCurrentPage('home');
     setActiveTab('dashboard');
   };
 
   const handleNavigate = (page) => {
     setCurrentPage(page);
+  };
+
+  const handleUpdateProfile = (updatedProfile) => {
+    const currentSession = JSON.parse(localStorage.getItem('moneymind_session') || '{}');
+    const newSession = {
+      ...currentSession,
+      name: updatedProfile.username,
+      avatar: updatedProfile.avatar
+    };
+    localStorage.setItem('moneymind_session', JSON.stringify(newSession));
+    setUserSession(newSession);
+
+    const registeredUsers = JSON.parse(localStorage.getItem('moneymind_users') || '[]');
+    const userIndex = registeredUsers.findIndex(u => u.email === currentSession.email);
+    if (userIndex !== -1) {
+      registeredUsers[userIndex].username = updatedProfile.username;
+      registeredUsers[userIndex].avatar = updatedProfile.avatar;
+      if (updatedProfile.password) {
+        registeredUsers[userIndex].password = updatedProfile.password;
+      }
+      localStorage.setItem('moneymind_users', JSON.stringify(registeredUsers));
+    }
   };
 
   const loadCategories = () => {
@@ -72,7 +105,10 @@ function App() {
         return res.json();
       })
       .then(newCat => {
-        setCategories(prev => [...prev, newCat.name]);
+        setCategories(prev => {
+          if (prev.includes(newCat.name)) return prev;
+          return [...prev, newCat.name];
+        });
         return newCat.name;
       });
   };
@@ -116,11 +152,41 @@ function App() {
       .catch(err => console.error("Error fetching incomes:", err));
   };
 
+  const fetchTelegramStatus = () => {
+    fetch('/api/telegram/status')
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to fetch Telegram status");
+        return res.json();
+      })
+      .then(data => setTelegramStatus(data))
+      .catch(err => console.error("Error fetching Telegram status:", err));
+  };
+
+  const handleDisconnectTelegram = () => {
+    fetch('/api/telegram/disconnect', {
+      method: 'POST'
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to disconnect Telegram");
+        return res.json();
+      })
+      .then(data => {
+        setTelegramStatus(prev => ({
+          ...prev,
+          connected: false,
+          chat_id: null,
+          code: data.code
+        }));
+      })
+      .catch(err => console.error("Error disconnecting Telegram:", err));
+  };
+
   // Fetch data on mount only when logged in
   useEffect(() => {
     if (currentPage === 'app') {
       loadAllData();
       loadCategories();
+      fetchTelegramStatus();
     }
   }, [currentPage]);
 
@@ -260,6 +326,12 @@ function App() {
           setActiveTab={setActiveTab}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onLogout={handleLogout}
+          isSecretUnlocked={isSecretUnlocked}
+          userSession={userSession}
+          onUpdateProfile={handleUpdateProfile}
+          telegramStatus={telegramStatus}
+          onDisconnectTelegram={handleDisconnectTelegram}
+          onRefreshTelegram={fetchTelegramStatus}
         />
 
         {activeTab === 'dashboard' ? (
@@ -290,6 +362,13 @@ function App() {
             expenses={expenses}
             incomes={incomes}
             currencySymbol={currency.symbol}
+          />
+        ) : activeTab === 'labeling' ? (
+          <LabelingView
+            onUploadSuccess={loadAllData}
+            categories={categories}
+            onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
           />
         ) : (
           <WalletView
@@ -352,6 +431,7 @@ function App() {
         setCurrency={handleUpdateCurrency}
         onUploadSuccess={loadAllData}
         onResetData={handleResetData}
+        setIsSecretUnlocked={setIsSecretUnlocked}
       />
     </div>
   );

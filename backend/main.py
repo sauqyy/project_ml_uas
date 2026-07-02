@@ -1,11 +1,20 @@
 from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 from sqlalchemy.orm import Session
+import sys
 import os
+
+# Force UTF-8 encoding on stdout/stderr to prevent Windows console encoding issues (e.g. easyocr progress bars)
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 import io
 import csv
 import re
 import pandas as pd
+import threading
+import json
+import telebot
+import google.generativeai as genai
 
 from database import SessionLocal, engine, Base
 import models
@@ -15,6 +24,7 @@ import ai_models
 Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__, static_folder="static")
+app.debug = True
 CORS(app) # Enable CORS for all routes during development
 
 # Helper to get DB session
@@ -32,23 +42,23 @@ def seed_db():
     try:
         # Check settings
         if db.query(models.Setting).count() == 0:
-            default_setting = models.Setting(code="USD", symbol="$", name="US Dollar")
+            default_setting = models.Setting(code="IDR", symbol="Rp", name="Indonesian Rupiah")
             db.add(default_setting)
             db.commit()
 
         # Check expenses
         if db.query(models.Expense).count() == 0:
             initial_expenses = [
-                models.Expense(amount=45.67, category="Food & Dining", desc="Lunch at downtown cafe", date="2024-01-15", displayDate="Mon, Jan 15, 2024"),
-                models.Expense(amount=89.99, category="Shopping", desc="New running shoes", date="2024-01-14", displayDate="Sun, Jan 14, 2024"),
-                models.Expense(amount=12.50, category="Transportation", desc="Gas station", date="2024-01-14", displayDate="Sun, Jan 14, 2024"),
-                models.Expense(amount=156.78, category="Bills & Utilities", desc="Monthly electricity bill", date="2024-01-13", displayDate="Sat, Jan 13, 2024"),
-                models.Expense(amount=23.45, category="Entertainment", desc="Movie tickets", date="2024-01-12", displayDate="Fri, Jan 12, 2024"),
-                models.Expense(amount=67.89, category="Food & Dining", desc="Grocery shopping", date="2024-01-11", displayDate="Thu, Jan 11, 2024"),
-                models.Expense(amount=125.00, category="Shopping", desc="Winter jacket", date="2023-12-20", displayDate="Wed, Dec 20, 2023"),
-                models.Expense(amount=35.50, category="Food & Dining", desc="Dinner with friends", date="2023-12-18", displayDate="Mon, Dec 18, 2023"),
-                models.Expense(amount=78.90, category="Bills & Utilities", desc="Internet bill", date="2023-12-15", displayDate="Fri, Dec 15, 2023"),
-                models.Expense(amount=200.00, category="Healthcare", desc="Doctor visit", date="2023-11-28", displayDate="Tue, Nov 28, 2023")
+                models.Expense(amount=45000.00, category="Food & Dining", desc="Lunch at downtown cafe", date="2024-01-15", displayDate="Mon, Jan 15, 2024"),
+                models.Expense(amount=90000.00, category="Shopping", desc="New running shoes", date="2024-01-14", displayDate="Sun, Jan 14, 2024"),
+                models.Expense(amount=12000.00, category="Transportation", desc="Gas station", date="2024-01-14", displayDate="Sun, Jan 14, 2024"),
+                models.Expense(amount=156000.00, category="Bills & Utilities", desc="Monthly electricity bill", date="2024-01-13", displayDate="Sat, Jan 13, 2024"),
+                models.Expense(amount=23000.00, category="Entertainment", desc="Movie tickets", date="2024-01-12", displayDate="Fri, Jan 12, 2024"),
+                models.Expense(amount=67000.00, category="Food & Dining", desc="Grocery shopping", date="2024-01-11", displayDate="Thu, Jan 11, 2024"),
+                models.Expense(amount=125000.00, category="Shopping", desc="Winter jacket", date="2023-12-20", displayDate="Wed, Dec 20, 2023"),
+                models.Expense(amount=35000.00, category="Food & Dining", desc="Dinner with friends", date="2023-12-18", displayDate="Mon, Dec 18, 2023"),
+                models.Expense(amount=78000.00, category="Bills & Utilities", desc="Internet bill", date="2023-12-15", displayDate="Fri, Dec 15, 2023"),
+                models.Expense(amount=200000.00, category="Healthcare", desc="Doctor visit", date="2023-11-28", displayDate="Tue, Nov 28, 2023")
             ]
             db.add_all(initial_expenses)
             db.commit()
@@ -56,7 +66,7 @@ def seed_db():
         # Check incomes
         if db.query(models.Income).count() == 0:
             initial_incomes = [
-                models.Income(amount=5000.00, source="Monthly Salary", date="2024-01-01")
+                models.Income(amount=5000000.00, source="Monthly Salary", date="2024-01-01")
             ]
             db.add_all(initial_incomes)
             db.commit()
@@ -81,12 +91,16 @@ seed_db()
 
 # --- API Endpoints ---
 
+def get_user_email():
+    return request.headers.get("X-User-Email", "demo@moneymind.com")
+
 # Expenses Endpoints
 @app.route("/api/expenses", methods=["GET"])
 def get_expenses():
     db = get_db()
     try:
-        expenses = db.query(models.Expense).order_by(models.Expense.date.desc(), models.Expense.id.desc()).all()
+        user_email = get_user_email()
+        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).order_by(models.Expense.date.desc(), models.Expense.id.desc()).all()
         result = []
         for e in expenses:
             result.append({
@@ -106,7 +120,9 @@ def create_expense():
     data = request.json
     db = get_db()
     try:
+        user_email = get_user_email()
         expense = models.Expense(
+            user_email=user_email,
             amount=float(data["amount"]),
             category=data["category"],
             desc=data.get("desc"),
@@ -131,7 +147,8 @@ def create_expense():
 def delete_expense(expense_id):
     db = get_db()
     try:
-        expense = db.query(models.Expense).filter(models.Expense.id == expense_id).first()
+        user_email = get_user_email()
+        expense = db.query(models.Expense).filter(models.Expense.id == expense_id, models.Expense.user_email == user_email).first()
         if not expense:
             return jsonify({"detail": "Expense not found"}), 404
         db.delete(expense)
@@ -145,7 +162,8 @@ def update_expense(expense_id):
     data = request.json
     db = get_db()
     try:
-        expense = db.query(models.Expense).filter(models.Expense.id == expense_id).first()
+        user_email = get_user_email()
+        expense = db.query(models.Expense).filter(models.Expense.id == expense_id, models.Expense.user_email == user_email).first()
         if not expense:
             return jsonify({"detail": "Expense not found"}), 404
         
@@ -176,7 +194,8 @@ def update_expense(expense_id):
 def get_incomes():
     db = get_db()
     try:
-        incomes = db.query(models.Income).order_by(models.Income.date.desc(), models.Income.id.desc()).all()
+        user_email = get_user_email()
+        incomes = db.query(models.Income).filter(models.Income.user_email == user_email).order_by(models.Income.date.desc(), models.Income.id.desc()).all()
         result = []
         for i in incomes:
             result.append({
@@ -194,7 +213,9 @@ def create_income():
     data = request.json
     db = get_db()
     try:
+        user_email = get_user_email()
         income = models.Income(
+            user_email=user_email,
             amount=float(data["amount"]),
             source=data["source"],
             date=data["date"]
@@ -215,7 +236,8 @@ def create_income():
 def delete_income(income_id):
     db = get_db()
     try:
-        income = db.query(models.Income).filter(models.Income.id == income_id).first()
+        user_email = get_user_email()
+        income = db.query(models.Income).filter(models.Income.id == income_id, models.Income.user_email == user_email).first()
         if not income:
             return jsonify({"detail": "Income not found"}), 404
         db.delete(income)
@@ -229,9 +251,10 @@ def delete_income(income_id):
 def get_settings():
     db = get_db()
     try:
-        setting = db.query(models.Setting).first()
+        user_email = get_user_email()
+        setting = db.query(models.Setting).filter(models.Setting.user_email == user_email).first()
         if not setting:
-            setting = models.Setting(code="USD", symbol="$", name="US Dollar")
+            setting = models.Setting(user_email=user_email, code="IDR", symbol="Rp", name="Indonesian Rupiah")
             db.add(setting)
             db.commit()
             db.refresh(setting)
@@ -249,9 +272,10 @@ def update_settings():
     data = request.json
     db = get_db()
     try:
-        setting = db.query(models.Setting).first()
+        user_email = get_user_email()
+        setting = db.query(models.Setting).filter(models.Setting.user_email == user_email).first()
         if not setting:
-            setting = models.Setting()
+            setting = models.Setting(user_email=user_email)
             db.add(setting)
         
         setting.code = data["code"]
@@ -275,7 +299,8 @@ def update_settings():
 def get_anomalies():
     db = get_db()
     try:
-        expenses = db.query(models.Expense).all()
+        user_email = get_user_email()
+        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
         expense_list = []
         for e in expenses:
             expense_list.append({
@@ -295,7 +320,8 @@ def get_anomalies():
 def get_forecast():
     db = get_db()
     try:
-        expenses = db.query(models.Expense).all()
+        user_email = get_user_email()
+        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
         expense_list = []
         for e in expenses:
             expense_list.append({
@@ -321,6 +347,7 @@ def upload_csv():
         
     db = get_db()
     try:
+        user_email = get_user_email()
         # Read and decode CSV file
         stream = io.StringIO(file.stream.read().decode("utf-8-sig"), newline=None)
         csv_reader = csv.DictReader(stream)
@@ -330,9 +357,9 @@ def upload_csv():
         if not headers or 'Jumlah' not in headers or 'Transaksi' not in headers:
             return jsonify({"detail": "Invalid file format. Columns must match the transaction history CSV."}), 400
             
-        # Clear existing expenses and incomes to load the new data cleanly
-        db.query(models.Expense).delete()
-        db.query(models.Income).delete()
+        # Clear existing expenses and incomes for this user to load the new data cleanly
+        db.query(models.Expense).filter(models.Expense.user_email == user_email).delete()
+        db.query(models.Income).filter(models.Income.user_email == user_email).delete()
         db.commit()
         
         # Temporary lists to process
@@ -349,8 +376,12 @@ def upload_csv():
             desc = row.get('Transaksi', '').strip()
             nlp_inputs.append({"desc": desc})
             
-        # Classify all descriptions
-        predicted_categories = ai_models.train_and_classify_categories(nlp_inputs)
+        # Fetch all confirmed labels for this user
+        confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
+        confirmed_dict = {c.desc: c.category for c in confirmed_list}
+        
+        # Classify all descriptions using the feedback-aware model
+        predictions_map = ai_models.train_and_predict_with_feedback(nlp_inputs, confirmed_dict)
         
         # Parse and save expenses & incomes
         imported_expenses = 0
@@ -362,7 +393,6 @@ def upload_csv():
             amount_raw = row.get('Jumlah', '').strip()
             
             # Clean amount
-            # e.g., -Rp10.400 -> -10400.0, +Rp500.000 -> 500000.0
             is_negative = '-' in amount_raw
             cleaned_digits = re.sub(r'[^\d]', '', amount_raw)
             if not cleaned_digits:
@@ -370,10 +400,9 @@ def upload_csv():
             else:
                 amount_val = float(cleaned_digits)
             
-            # Handle date parsing using pandas to handle mixed formatting
+            # Handle date parsing
             parsed_dt = pd.to_datetime(date_str, errors='coerce', dayfirst=True)
             if pd.isna(parsed_dt):
-                # Fallback to general parsing if dayfirst fails
                 parsed_dt = pd.to_datetime(date_str, errors='coerce')
                 if pd.isna(parsed_dt):
                     parsed_dt = pd.Timestamp.now()
@@ -382,9 +411,9 @@ def upload_csv():
             display_date = parsed_dt.strftime("%a, %b %d, %Y")
             
             if is_negative:
-                # Save as Expense
-                category = predicted_categories[idx] if idx < len(predicted_categories) else 'Lain-lain'
+                category = predictions_map.get(desc, 'Lain-lain')
                 expense = models.Expense(
+                    user_email=user_email,
                     amount=amount_val,
                     category=category,
                     desc=desc,
@@ -394,8 +423,8 @@ def upload_csv():
                 db.add(expense)
                 imported_expenses += 1
             else:
-                # Save as Income
                 income = models.Income(
+                    user_email=user_email,
                     amount=amount_val,
                     source=desc,
                     date=formatted_date
@@ -416,6 +445,87 @@ def upload_csv():
     finally:
         db.close()
 
+# Get unique descriptions for labeling confirmation (Secret Mode)
+@app.route("/api/labeling-jobs", methods=["GET"])
+def get_labeling_jobs():
+    db = get_db()
+    try:
+        user_email = get_user_email()
+        # Get all expenses for this user
+        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
+        # Get all confirmed labels for this user
+        confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
+        confirmed_dict = {c.desc: c.category for c in confirmed_list}
+        
+        # Group by description to find unique ones and count them
+        desc_data = {}
+        for e in expenses:
+            desc = e.desc.strip() if e.desc else ""
+            if not desc:
+                continue
+            if desc not in desc_data:
+                desc_data[desc] = {
+                    "desc": desc,
+                    "category": e.category,
+                    "count": 0,
+                    "confirmed": desc in confirmed_dict
+                }
+            desc_data[desc]["count"] += 1
+            
+        # Convert to list and sort by count descending
+        jobs = list(desc_data.values())
+        jobs.sort(key=lambda x: x["count"], reverse=True)
+        return jsonify(jobs)
+    finally:
+        db.close()
+
+# Confirm a label, save to DB, retrain model, and update all database records
+@app.route("/api/confirm-label", methods=["POST"])
+def confirm_label():
+    data = request.json
+    desc = data.get("desc", "").strip()
+    category = data.get("category", "").strip()
+    if not desc or not category:
+        return jsonify({"detail": "Description and Category are required"}), 400
+        
+    db = get_db()
+    try:
+        user_email = get_user_email()
+        # 1. Save or update in ConfirmedLabel for this user
+        existing = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.desc == desc, models.ConfirmedLabel.user_email == user_email).first()
+        if existing:
+            existing.category = category
+        else:
+            new_label = models.ConfirmedLabel(user_email=user_email, desc=desc, category=category)
+            db.add(new_label)
+        db.commit()
+        
+        # 2. Retrain and update all expenses in the database for this user
+        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
+        expense_list = [{"desc": e.desc, "category": e.category, "amount": e.amount} for e in expenses]
+        
+        # Fetch all confirmed labels for this user
+        confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
+        confirmed_dict = {c.desc: c.category for c in confirmed_list}
+        
+        # Retrain and predict
+        predictions_map = ai_models.train_and_predict_with_feedback(expense_list, confirmed_dict)
+        
+        # Update each expense in the database
+        for e in expenses:
+            e_desc = e.desc.strip() if e.desc else ""
+            if e_desc in predictions_map:
+                e.category = predictions_map[e_desc]
+        db.commit()
+        
+        return jsonify({"message": "Label confirmed and model retrained successfully"}), 200
+    except Exception as e:
+        db.rollback()
+        print(f"Error in confirm_label: {e}")
+        return jsonify({"detail": str(e)}), 500
+    finally:
+        db.close()
+
 # Categories Endpoints
 @app.route("/api/categories", methods=["GET"])
 def get_categories():
@@ -432,12 +542,19 @@ def create_category():
     name = data.get("name", "").strip()
     if not name:
         return jsonify({"detail": "Category name cannot be empty"}), 400
+        
+    # Format the name: capitalize the first letter of each word (Title Case)
+    formatted_name = " ".join([w.capitalize() for w in name.split()])
+    
     db = get_db()
     try:
-        existing = db.query(models.Category).filter(models.Category.name == name).first()
+        from sqlalchemy import func
+        existing = db.query(models.Category).filter(func.lower(models.Category.name) == formatted_name.lower()).first()
         if existing:
-            return jsonify({"detail": "Category already exists"}), 400
-        category = models.Category(name=name)
+            # If it already exists case-insensitively, return the existing capitalized category
+            return jsonify({"name": existing.name}), 200
+            
+        category = models.Category(name=formatted_name)
         db.add(category)
         db.commit()
         return jsonify({"name": category.name}), 201
@@ -468,8 +585,9 @@ def delete_category(name):
 def export_csv():
     db = get_db()
     try:
-        expenses = db.query(models.Expense).order_by(models.Expense.date.desc()).all()
-        incomes = db.query(models.Income).order_by(models.Income.date.desc()).all()
+        user_email = get_user_email()
+        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).order_by(models.Expense.date.desc()).all()
+        incomes = db.query(models.Income).filter(models.Income.user_email == user_email).order_by(models.Income.date.desc()).all()
         
         # Create an in-memory CSV buffer
         si = io.StringIO()
@@ -519,8 +637,9 @@ def export_csv():
 def reset_data():
     db = get_db()
     try:
-        db.query(models.Expense).delete()
-        db.query(models.Income).delete()
+        user_email = get_user_email()
+        db.query(models.Expense).filter(models.Expense.user_email == user_email).delete()
+        db.query(models.Income).filter(models.Income.user_email == user_email).delete()
         db.commit()
         return jsonify({"message": "All transaction data cleared successfully"}), 200
     except Exception as e:
@@ -528,6 +647,561 @@ def reset_data():
         return jsonify({"detail": str(e)}), 500
     finally:
         db.close()
+
+# Telegram Account Connection Endpoints
+@app.route("/api/telegram/status", methods=["GET"])
+def get_telegram_status():
+    db = get_db()
+    try:
+        user_email = get_user_email()
+        conn = db.query(models.TelegramConnection).filter(models.TelegramConnection.user_email == user_email).first()
+        
+        # If no connection row exists, create one with a unique 6-digit OTP code
+        if not conn:
+            import random
+            # Generate a unique 6-digit code
+            while True:
+                code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+                # Ensure code is unique in the database
+                existing_code = db.query(models.TelegramConnection).filter(models.TelegramConnection.auth_code == code).first()
+                if not existing_code:
+                    break
+            
+            conn = models.TelegramConnection(user_email=user_email, auth_code=code, chat_id=None)
+            db.add(conn)
+            db.commit()
+            db.refresh(conn)
+            
+        return jsonify({
+            "connected": conn.chat_id is not None,
+            "chat_id": conn.chat_id,
+            "code": conn.auth_code
+        }), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"detail": str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/api/telegram/disconnect", methods=["POST"])
+def disconnect_telegram():
+    db = get_db()
+    try:
+        user_email = get_user_email()
+        conn = db.query(models.TelegramConnection).filter(models.TelegramConnection.user_email == user_email).first()
+        if conn:
+            import random
+            while True:
+                code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+                existing_code = db.query(models.TelegramConnection).filter(models.TelegramConnection.auth_code == code).first()
+                if not existing_code:
+                    break
+            conn.chat_id = None
+            conn.auth_code = code
+            db.commit()
+            return jsonify({"message": "Telegram successfully disconnected", "code": code}), 200
+        return jsonify({"detail": "No Telegram connection found"}), 404
+    except Exception as e:
+        db.rollback()
+        return jsonify({"detail": str(e)}), 500
+    finally:
+        db.close()
+
+# ==========================================
+# TELEGRAM BOT & GEMINI AI INTEGRATION
+# ==========================================
+
+import os
+
+# Load credentials from environment variables or a local .env file
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+# Simple helper to read .env if it exists in the root or parent directories
+def load_local_env():
+    global TELEGRAM_BOT_TOKEN, GEMINI_API_KEY
+    for env_path in [".env", "backend/.env", "../.env"]:
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, "r") as f:
+                    for line in f:
+                        if "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip('"').strip("'")
+                            if k == "TELEGRAM_BOT_TOKEN" and not TELEGRAM_BOT_TOKEN:
+                                TELEGRAM_BOT_TOKEN = v
+                            elif k == "GEMINI_API_KEY" and not GEMINI_API_KEY:
+                                GEMINI_API_KEY = v
+            except Exception as e:
+                print(f"Error loading local .env: {e}")
+            break
+
+load_local_env()
+
+# Configure Gemini
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+def parse_expense_with_gemini(text, categories_list):
+    """
+    Uses Gemini 1.5 Flash to parse natural language input and return a structured JSON.
+    """
+    prompt = f"""
+    Tugas Anda adalah menganalisis teks percakapan berikut dan mengekstrak informasi pengeluaran uang (expense) ke dalam format JSON.
+    
+    Daftar kategori pengeluaran yang tersedia: {categories_list}
+    
+    Aturan analisis:
+    1. Jika teks berisi informasi pengeluaran uang (contoh: "makan siang sate padang 35 ribu", "beli bensin pertamax 50000", "bayar kosan 1.5jt", "tadi beli seblak 15.000"):
+       Kembalikan JSON dengan format berikut:
+       {{
+         "is_expense": true,
+         "desc": "deskripsi singkat transaksi (gunakan huruf kapital di awal setiap kata, contoh: 'Makan Bakso', 'Bensin Pertamax')",
+         "amount": nominal angka saja (integer, konversikan kata seperti 'ribu' ke 1000, 'jt' atau 'juta' ke 1000000),
+         "category": "pilih kategori yang paling cocok dari daftar di atas. Jika tidak ada yang cocok sama sekali, pilih 'Lain-lain'"
+       }}
+    2. Jika teks BUKAN merupakan informasi pengeluaran uang (contoh: "halo", "siapa kamu", "tolong beri saran hemat", "berapa pengeluaran saya"):
+       Kembalikan JSON dengan format berikut:
+       {{
+         "is_expense": false,
+         "reply": "Jawaban yang ramah, sopan, dan solutif untuk menjawab teks tersebut secara kontekstual sebagai asisten keuangan bernama MoneyMind"
+       }}
+       
+    Teks pengguna: "{text}"
+    
+    Kembalikan HANYA string JSON yang valid. Jangan sertakan markdown block (seperti ```json) atau teks tambahan lainnya.
+    """
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(prompt)
+        
+        # Bersihkan string respon dari kemungkinan markdown block
+        clean_text = response.text.strip()
+        if clean_text.startswith("```"):
+            clean_text = re.sub(r'^```(?:json)?\n', '', clean_text)
+            clean_text = re.sub(r'\n```$', '', clean_text)
+            
+        return json.loads(clean_text)
+    except Exception as e:
+        print(f"Error calling Gemini API: {e}")
+        return None
+
+_easyocr_reader = None
+
+def analyze_receipt_locally(image_bytes):
+    """
+    Analyzes receipt image locally using EasyOCR and a Decision Tree Classifier.
+    Returns a dict with 'desc' and 'amount', or None if it fails.
+    """
+    global _easyocr_reader
+    try:
+        import easyocr
+        import joblib
+        import io
+        from PIL import Image
+        import numpy as np
+        import pandas as pd
+        
+        # Initialize easyocr reader lazily to prevent startup slowdowns
+        if _easyocr_reader is None:
+            print("Initializing EasyOCR Reader (English & Indonesian)...")
+            # Force CPU to avoid CUDA dependency issues
+            _easyocr_reader = easyocr.Reader(['en', 'id'], gpu=False)
+            
+        # Convert bytes to numpy array
+        image = Image.open(io.BytesIO(image_bytes))
+        img_np = np.array(image)
+        
+        # Run EasyOCR
+        results = _easyocr_reader.readtext(img_np)
+        if not results:
+            return {"error": "Tidak ada teks yang terdeteksi pada gambar struk secara lokal."}
+            
+        # Sort results by vertical position (y-coordinate of top-left box)
+        results_sorted = sorted(results, key=lambda x: x[0][0][1])
+        
+        lines = [r[1] for r in results_sorted]
+        total_lines = len(lines)
+        
+        if total_lines == 0:
+            return {"error": "Struk kosong atau tidak terbaca secara lokal."}
+            
+        # Extract features for each line
+        features = []
+        keywords = ['total', 'jumlah', 'grand', 'bayar', 'rp', 'subtotal', 'netto']
+        
+        for idx, line in enumerate(lines):
+            line_lower = line.lower()
+            line_pos_ratio = idx / (total_lines - 1) if total_lines > 1 else 0.0
+            has_total_keyword = 1 if any(kw in line_lower for kw in keywords) else 0
+            has_number = 1 if re.search(r'\d', line) else 0
+            
+            features.append({
+                'line_pos_ratio': line_pos_ratio,
+                'has_total_keyword': has_total_keyword,
+                'has_number': has_number
+            })
+            
+        df_features = pd.DataFrame(features)
+        
+        # Load the Decision Tree model
+        model_path = os.path.join(os.path.dirname(__file__), 'receipt_total_classifier.joblib')
+        if not os.path.exists(model_path):
+            return {"error": "File model receipt_total_classifier.joblib tidak ditemukan di folder backend."}
+            
+        clf = joblib.load(model_path)
+        probs = clf.predict_proba(df_features)[:, 1]
+        
+        # Apply hard constraints (heuristics)
+        for idx in range(total_lines):
+            if df_features.loc[idx, 'has_number'] == 0:
+                probs[idx] = 0.0
+            if df_features.loc[idx, 'line_pos_ratio'] < 0.3:
+                probs[idx] = 0.0
+                
+        # Find the maximum probability
+        max_prob = np.max(probs)
+        
+        # Jika probabilitas tertinggi adalah 0.0, berarti tidak menemukan baris total yang valid
+        if max_prob == 0.0:
+            return {"error": "Tidak dapat mendeteksi nominal total belanja yang valid menggunakan model ML lokal."}
+            
+        # Dapatkan semua indeks baris yang memiliki probabilitas mendekati maksimum (selisih <= 0.01)
+        candidate_indices = [i for i, p in enumerate(probs) if p >= max_prob - 0.01 and p > 0.0]
+        
+        # Dari kandidat tersebut, pilih baris dengan nominal angka terbesar (karena total belanja pasti yang terbesar)
+        best_line_idx = candidate_indices[0]
+        max_amount = -1
+        
+        for idx in candidate_indices:
+            line_text = lines[idx]
+            # Ekstrak nominal dari baris ini
+            clean_line = line_text.replace(',', '').replace(' ', '')
+            clean_line = re.sub(r'\.(\d{3})', r'\1', clean_line)
+            clean_line = re.sub(r'\.(\d{2})$', '', clean_line)
+            numbers_in_line = re.findall(r'\d+', clean_line)
+            amount = int(numbers_in_line[-1]) if numbers_in_line else 0
+            
+            if amount > max_amount:
+                max_amount = amount
+                best_line_idx = idx
+                
+        predicted_total_line = lines[best_line_idx]
+        amount = max_amount
+        
+        # Extract merchant name (first alphabetical line)
+        merchant_name = "Struk Belanja"
+        for line in lines:
+            if len(re.findall(r'[a-zA-Z]', line)) >= 3 and not re.search(r'==|--|__', line):
+                merchant_name = line.strip()
+                break
+                
+        return {
+            "desc": merchant_name,
+            "amount": amount
+        }
+    except Exception as e:
+        print(f"Error in local receipt analysis: {e}")
+        return {"error": f"Gagal memproses gambar secara lokal: {str(e)}"}
+
+def start_telegram_bot():
+    bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+    
+    @bot.message_handler(commands=['start', 'help'])
+    def send_welcome(message):
+        welcome_text = (
+            "👋 *Halo! Selamat datang di Money Mind Bot!*\n\n"
+            "Saya adalah asisten keuangan pribadi Anda yang terhubung langsung dengan jurnal keuangan Anda.\n\n"
+            "💬 *Cara mencatat lewat chat:* \n"
+            "Ketik pengeluaran secara bebas dengan bahasa santai sehari-hari.\n"
+            "Contoh: _makan siang sate padang 35 ribu_ atau _beli bensin 15000_\n\n"
+            "📸 *Cara mencatat lewat foto struk:* \n"
+            "Kirimkan foto struk belanja Anda langsung ke chat ini. Saya akan otomatis membaca nominal, nama toko, serta mengklasifikasikan kategorinya menggunakan model ML lokal Anda!\n\n"
+            "🔗 *Cara menghubungkan ke Web Dashboard:*\n"
+            "Silakan ketik `/connect <KODE_KHUSUS>` untuk menyambungkan bot ini ke akun web Money Mind Anda. Anda bisa mendapatkan kode tersebut dengan mengklik tombol 'Connect to Telegram' di kanan atas dashboard web Anda."
+        )
+        bot.reply_to(message, welcome_text, parse_mode="Markdown")
+        
+    @bot.message_handler(commands=['connect'])
+    def connect_account(message):
+        args = message.text.split()
+        if len(args) < 2:
+            bot.reply_to(
+                message, 
+                "⚠️ *Sertakan kode khusus Anda.*\n\n"
+                "Contoh penggunaan:\n"
+                "`/connect 123456`", 
+                parse_mode="Markdown"
+            )
+            return
+            
+        code = args[1].strip()
+        db = SessionLocal()
+        try:
+            conn = db.query(models.TelegramConnection).filter(models.TelegramConnection.auth_code == code).first()
+            if not conn:
+                bot.reply_to(
+                    message, 
+                    "❌ *Kode tidak valid.*\n\n"
+                    "Kode otentikasi tidak ditemukan atau sudah kadaluarsa. Silakan cek ulang di dashboard web Anda.",
+                    parse_mode="Markdown"
+                )
+                return
+                
+            # If this Telegram chat is already connected to another web account, unlink it first to avoid UNIQUE constraint violation
+            existing_link = db.query(models.TelegramConnection).filter(models.TelegramConnection.chat_id == str(message.chat.id)).first()
+            if existing_link:
+                existing_link.chat_id = None
+                db.flush()
+
+            # Connect the chat ID
+            conn.chat_id = str(message.chat.id)
+            db.commit()
+            bot.reply_to(
+                message, 
+                f"🎉 *Berhasil Terhubung!*\n\n"
+                f"Akun Telegram Anda sekarang terhubung dengan email: *{conn.user_email}*.\n"
+                f"Semua pencatatan keuangan yang Anda kirim ke bot ini akan masuk ke dashboard Money Mind Anda.",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            db.rollback()
+            bot.reply_to(message, f"❌ Terjadi kesalahan saat menghubungkan akun: {str(e)}")
+        finally:
+            db.close()
+        
+    @bot.message_handler(func=lambda message: True)
+    def handle_user_message(message):
+        # Check connection
+        db = SessionLocal()
+        user_email = None
+        try:
+            conn = db.query(models.TelegramConnection).filter(models.TelegramConnection.chat_id == str(message.chat.id)).first()
+            if conn:
+                user_email = conn.user_email
+        except Exception as e:
+            print(f"Error checking telegram connection: {e}")
+        finally:
+            db.close()
+
+        if not user_email:
+            bot.reply_to(
+                message,
+                "⚠️ *Akun Anda belum terhubung.*\n\n"
+                "Untuk mencatat transaksi melalui bot ini, silakan hubungkan akun Telegram Anda terlebih dahulu dengan mengirimkan perintah:\n"
+                "`/connect <KODE_KHUSUS>`\n\n"
+                "Anda dapat menemukan kode tersebut pada tombol **Connect to Telegram** di dashboard web Anda.",
+                parse_mode="Markdown"
+            )
+            return
+
+        text = message.text.strip()
+        
+        # Ambil daftar kategori dari database
+        db = get_db()
+        try:
+            categories_entities = db.query(models.Category).all()
+            categories_list = [c.name for c in categories_entities]
+        except Exception as e:
+            print(f"Error fetching categories: {e}")
+            categories_list = ["Makanan", "Transportasi", "Kebutuhan", "Lain-lain"]
+        finally:
+            db.close()
+            
+        # Panggil Gemini AI untuk melakukan parsing teks
+        parsed = parse_expense_with_gemini(text, categories_list)
+        
+        if not parsed:
+            bot.reply_to(message, "⚠️ Maaf, saya sedang kesulitan memproses pesan Anda. Silakan coba lagi beberapa saat lagi.")
+            return
+            
+        if parsed.get("is_expense"):
+            desc = parsed.get("desc")
+            amount = parsed.get("amount")
+            category = parsed.get("category")
+            
+            # Simpan transaksi ke database SQLite
+            db = get_db()
+            try:
+                import datetime
+                today = datetime.date.today()
+                
+                expense = models.Expense(
+                    user_email=user_email,
+                    amount=float(amount),
+                    category=category,
+                    desc=desc,
+                    date=today.strftime("%Y-%m-%d"),
+                    displayDate=today.strftime("%a, %b %d, %Y")
+                )
+                db.add(expense)
+                db.commit()
+                
+                # Format nominal uang ke Rupiah dengan ribuan separator
+                formatted_amount = f"Rp{int(amount):,}"
+                
+                success_msg = (
+                    f"✅ *Pengeluaran Berhasil Dicatat!*\n\n"
+                    f"📝 *Transaksi:* {desc}\n"
+                    f"💰 *Jumlah:* {formatted_amount}\n"
+                    f"🏷️ *Kategori:* {category}\n\n"
+                    f"_Transaksi ini telah otomatis masuk ke jurnal keuangan web Money Mind Anda._"
+                )
+                bot.reply_to(message, success_msg, parse_mode="Markdown")
+            except Exception as e:
+                db.rollback()
+                print(f"Error saving telegram expense: {e}")
+                bot.reply_to(message, f"❌ Gagal menyimpan transaksi ke database: {str(e)}")
+            finally:
+                db.close()
+        else:
+            # Jika bukan pengeluaran, kirimkan balasan ramah dari AI
+            reply_text = parsed.get("reply", "Halo! Ada yang bisa saya bantu dengan keuangan Anda hari ini?")
+            bot.reply_to(message, reply_text)
+            
+    @bot.message_handler(content_types=['photo'])
+    def handle_receipt_photo(message):
+        # Check connection
+        db = SessionLocal()
+        user_email = None
+        try:
+            conn = db.query(models.TelegramConnection).filter(models.TelegramConnection.chat_id == str(message.chat.id)).first()
+            if conn:
+                user_email = conn.user_email
+        except Exception as e:
+            print(f"Error checking telegram connection: {e}")
+        finally:
+            db.close()
+
+        if not user_email:
+            bot.reply_to(
+                message,
+                "⚠️ *Akun Anda belum terhubung.*\n\n"
+                "Untuk mengolah struk melalui bot ini, silakan hubungkan akun Telegram Anda terlebih dahulu melalui perintah:\n"
+                "`/connect <KODE_KHUSUS>`\n\n"
+                "Anda dapat menemukan kode tersebut pada tombol **Connect to Telegram** di dashboard web Anda.",
+                parse_mode="Markdown"
+            )
+            return
+
+        processing_msg = bot.reply_to(message, "📸 *Struk diterima!* Sedang menganalisis foto menggunakan Model ML Lokal...", parse_mode="Markdown")
+        
+        try:
+            # 1. Unduh foto ukuran terbesar
+            photo = message.photo[-1]
+            file_info = bot.get_file(photo.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            
+            # 2. Ekstrak deskripsi dan nominal belanja menggunakan EasyOCR + Decision Tree secara lokal
+            parsed = analyze_receipt_locally(downloaded_file)
+            
+            if not parsed:
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=processing_msg.message_id,
+                    text="⚠️ Gagal menganalisis gambar struk Anda. Pastikan gambar struk Anda cukup terang dan jelas."
+                )
+                return
+                
+            if "error" in parsed:
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=processing_msg.message_id,
+                    text=f"⚠️ {parsed['error']}"
+                )
+                return
+                
+            desc = parsed.get("desc")
+            amount = parsed.get("amount")
+            
+            if not desc or not amount:
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=processing_msg.message_id,
+                    text="⚠️ Tidak dapat menemukan informasi nama toko atau total nominal dari struk tersebut."
+                )
+                return
+                
+            # 3. Klasifikasi Kategori menggunakan Model Machine Learning Lokal (Logistic Regression)
+            db = get_db()
+            try:
+                # Ambil data pengeluaran historis dan feedback pelabelan dari DB untuk demo user
+                expenses_list = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
+                confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
+                
+                history_data = [{"desc": e.desc, "category": e.category} for e in expenses_list]
+                user_feedback = {c.desc: c.category for c in confirmed_list}
+                
+                # Gunakan fungsi latih & prediksi lokal
+                predicted_cats = ai_models.train_and_predict_with_feedback(
+                    history_data=history_data,
+                    user_feedback=user_feedback,
+                    test_descriptions=[desc]
+                )
+                category = predicted_cats[0] if predicted_cats else "Lain-lain"
+            except Exception as e:
+                print(f"Error classifying category locally: {e}")
+                category = "Lain-lain"
+            finally:
+                db.close()
+                
+            # 4. Simpan transaksi ke database SQLite
+            db = get_db()
+            try:
+                import datetime
+                today = datetime.date.today()
+                
+                expense = models.Expense(
+                    user_email=user_email,
+                    amount=float(amount),
+                    category=category,
+                    desc=desc,
+                    date=today.strftime("%Y-%m-%d"),
+                    displayDate=today.strftime("%a, %b %d, %Y")
+                )
+                db.add(expense)
+                db.commit()
+                
+                formatted_amount = f"Rp{int(amount):,}"
+                
+                success_msg = (
+                    f"🧾 *Struk Berhasil Diolah secara Lokal!*\n\n"
+                    f"🏪 *Toko/Merchant:* {desc}\n"
+                    f"💰 *Total Belanja:* {formatted_amount}\n"
+                    f"🏷️ *Kategori (Model ML Lokal):* {category}\n\n"
+                    f"_Transaksi ini telah otomatis dimasukkan ke jurnal keuangan web Anda._"
+                )
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=processing_msg.message_id,
+                    text=success_msg,
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                db.rollback()
+                print(f"Error saving receipt expense: {e}")
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=processing_msg.message_id,
+                    text=f"❌ Gagal menyimpan transaksi dari struk ke database: {str(e)}"
+                )
+            finally:
+                db.close()
+                
+        except Exception as e:
+            print(f"Error in handle_receipt_photo: {e}")
+            bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=processing_msg.message_id,
+                text=f"❌ Terjadi kesalahan sistem saat memproses foto: {str(e)}"
+            )
+
+    try:
+        print("Starting Telegram Bot polling...")
+        bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    except Exception as e:
+        print(f"Telegram Bot polling stopped: {e}")
 
 # Static Frontend Serving for Production Mode
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -550,4 +1224,8 @@ def serve_frontend(path):
         return send_file(os.path.join(static_dir, "index.html"))
 
 if __name__ == "__main__":
+    # Start Telegram Bot in a background thread (only once, avoiding reloader duplicate)
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        threading.Thread(target=start_telegram_bot, daemon=True).start()
+        
     app.run(host="0.0.0.0", port=8000, debug=True)

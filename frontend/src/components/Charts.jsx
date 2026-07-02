@@ -161,11 +161,7 @@ export function ExpensesByCategory({ expenses }) {
                         />
                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                         <Tooltip cursor={{ fill: '#f1f5f9' }} />
-                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                            {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[entry.name] || COLORS['Other']} />
-                            ))}
-                        </Bar>
+                        <Bar dataKey="value" fill="#818cf8" radius={[4, 4, 0, 0]} />
                     </BarChart>
                 </ResponsiveContainer>
             </div>

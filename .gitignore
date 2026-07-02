@@ -16,3 +16,15 @@ backend/.pytest_cache/
 .DS_Store
 .vscode/
 .idea/
+
+# ML training artifacts & heavy assets
+runs/
+Deteksi-Struk-Belanja-5/
+yolov8n.pt
+/Untitled design.svg
+/*.csv
+/*.xlsx
+
+# Local environment secrets
+.env
+
