@@ -1223,9 +1223,13 @@ def serve_frontend(path):
         # Fallback to index.html for SPA routing
         return send_file(os.path.join(static_dir, "index.html"))
 
+# Start Telegram Bot in a background thread (runs both on local debug server and production WSGI Gunicorn)
+if not globals().get("_bot_thread_started", False):
+    globals()["_bot_thread_started"] = True
+    print("Launching Telegram Bot in background thread...")
+    threading.Thread(target=start_telegram_bot, daemon=True).start()
+
 if __name__ == "__main__":
-    # Start Telegram Bot in a background thread (only once, avoiding reloader duplicate)
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        threading.Thread(target=start_telegram_bot, daemon=True).start()
-        
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    # Get port from environment variable (Render sets this dynamically)
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port, debug=True)
