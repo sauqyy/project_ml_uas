@@ -124,7 +124,7 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
         <form onSubmit={handleSubmit}>
           {/* Avatar Upload */}
           <div className="avatar-upload-container">
-            <div className="relative">
+            <div className="relative" style={{ width: '100px', height: '100px' }}>
               {avatar ? (
                 <img src={avatar} alt="Avatar Preview" className="avatar-preview-large" />
               ) : (
@@ -136,7 +136,7 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
                 type="button" 
                 className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full border-2 border-white shadow-md hover:scale-105 active:scale-95 transition-all"
                 onClick={triggerFileInput}
-                style={{ backgroundColor: 'var(--primary)', cursor: 'pointer' }}
+                style={{ backgroundColor: 'var(--primary)', cursor: 'pointer', position: 'absolute', bottom: '0', right: '0' }}
               >
                 <Camera size={16} />
               </button>
@@ -148,9 +148,6 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
               accept="image/*" 
               style={{ display: 'none' }} 
             />
-            <button type="button" className="btn-avatar-upload" onClick={triggerFileInput}>
-              Ganti Foto Profil
-            </button>
           </div>
 
           {/* Edit Name */}
