@@ -92,7 +92,8 @@ seed_db()
 # --- API Endpoints ---
 
 def get_user_email():
-    return request.headers.get("X-User-Email", "demo@moneymind.com")
+    email = request.headers.get("X-User-Email") or request.args.get("email") or "demo@moneymind.com"
+    return email.strip().lower()
 
 # Expenses Endpoints
 @app.route("/api/expenses", methods=["GET"])
@@ -919,7 +920,9 @@ def start_telegram_bot():
             "📸 *Cara mencatat lewat foto struk:* \n"
             "Kirimkan foto struk belanja Anda langsung ke chat ini. Saya akan otomatis membaca nominal, nama toko, serta mengklasifikasikan kategorinya menggunakan model ML lokal Anda!\n\n"
             "🔗 *Cara menghubungkan ke Web Dashboard:*\n"
-            "Silakan ketik `/connect <KODE_KHUSUS>` untuk menyambungkan bot ini ke akun web Money Mind Anda. Anda bisa mendapatkan kode tersebut dengan mengklik tombol 'Connect to Telegram' di kanan atas dashboard web Anda."
+            "Silakan ketik `/connect <KODE_KHUSUS>` untuk menyambungkan bot ini ke akun web Money Mind Anda. Anda bisa mendapatkan kode tersebut dengan mengklik tombol 'Connect to Telegram' di kanan atas dashboard web Anda.\n\n"
+            "🔌 *Cara memutus hubungan:*\n"
+            "Ketik `/disconnect` untuk memutuskan hubungan akun Telegram ini dari dashboard web."
         )
         bot.reply_to(message, welcome_text, parse_mode="Markdown")
         
@@ -968,6 +971,44 @@ def start_telegram_bot():
         except Exception as e:
             db.rollback()
             bot.reply_to(message, f"❌ Terjadi kesalahan saat menghubungkan akun: {str(e)}")
+        finally:
+            db.close()
+            
+    @bot.message_handler(commands=['disconnect'])
+    def disconnect_account_bot(message):
+        db = SessionLocal()
+        try:
+            conn = db.query(models.TelegramConnection).filter(models.TelegramConnection.chat_id == str(message.chat.id)).first()
+            if not conn:
+                bot.reply_to(
+                    message,
+                    "⚠️ *Akun Anda belum terhubung.*\n\n"
+                    "Tidak ada koneksi Telegram yang aktif untuk chat ini.",
+                    parse_mode="Markdown"
+                )
+                return
+            
+            # Generate a new unique 6-digit code
+            import random
+            while True:
+                code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+                existing_code = db.query(models.TelegramConnection).filter(models.TelegramConnection.auth_code == code).first()
+                if not existing_code:
+                    break
+            
+            conn.chat_id = None
+            conn.auth_code = code
+            db.commit()
+            bot.reply_to(
+                message,
+                "🔌 *Berhasil Memutus Hubungan!*\n\n"
+                "Koneksi Telegram ke akun Money Mind Anda telah dihapus. Bot ini tidak akan mencatat transaksi baru lagi ke dashboard Anda.\n\n"
+                "Jika ingin menghubungkan kembali, Anda dapat menggunakan kode baru di dashboard web Anda.",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            db.rollback()
+            bot.reply_to(message, f"❌ Terjadi kesalahan saat memutus hubungan akun: {str(e)}")
         finally:
             db.close()
         
@@ -1225,9 +1266,11 @@ def serve_frontend(path):
 
 # Start Telegram Bot in a background thread (runs both on local debug server and production WSGI Gunicorn)
 if not globals().get("_bot_thread_started", False):
-    globals()["_bot_thread_started"] = True
-    print("Launching Telegram Bot in background thread...")
-    threading.Thread(target=start_telegram_bot, daemon=True).start()
+    # Only launch the bot in the main Werkzeug reloader child process to avoid duplicate bot instances in debug mode
+    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        globals()["_bot_thread_started"] = True
+        print("Launching Telegram Bot in background thread...")
+        threading.Thread(target=start_telegram_bot, daemon=True).start()
 
 if __name__ == "__main__":
     # Get port from environment variable (Render sets this dynamically)

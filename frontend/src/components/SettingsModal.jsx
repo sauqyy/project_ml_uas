@@ -15,6 +15,10 @@ export default function SettingsModal({ isOpen, onClose, currency, setCurrency, 
     const [uploadStatus, setUploadStatus] = useState({ success: false, message: '' });
     const [titleClicks, setTitleClicks] = useState(0);
 
+    const session = JSON.parse(localStorage.getItem('moneymind_session') || '{}');
+    const userEmail = session.email || '';
+    const exportUrl = userEmail ? `/api/export?email=${encodeURIComponent(userEmail)}` : '/api/export';
+
     const handleTitleClick = () => {
         const newClicks = titleClicks + 1;
         setTitleClicks(newClicks);
@@ -177,7 +181,7 @@ export default function SettingsModal({ isOpen, onClose, currency, setCurrency, 
                         Download all your expenses and incomes (wallet) data as a single CSV file.
                     </p>
                     <a
-                        href="/api/export"
+                        href={exportUrl}
                         download="money_mind_export.csv"
                         className="btn cursor-pointer text-center py-2.5 rounded-lg flex items-center justify-center gap-2"
                         style={{

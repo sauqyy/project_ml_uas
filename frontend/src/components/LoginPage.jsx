@@ -22,9 +22,11 @@ export default function LoginPage({ onLogin, onNavigate }) {
     setSuccess('');
     setIsLoading(true);
 
+    const normalizedInput = email.trim().toLowerCase();
+
     setTimeout(() => {
       // 1. Check against Demo Account
-      if (email === DEMO_EMAIL && password === DEMO_PASSWORD) {
+      if (normalizedInput === DEMO_EMAIL && password === DEMO_PASSWORD) {
         localStorage.setItem('moneymind_session', JSON.stringify({
           email: DEMO_EMAIL,
           name: 'Demo User',
@@ -38,12 +40,12 @@ export default function LoginPage({ onLogin, onNavigate }) {
       // 2. Check against Registered Users in localStorage
       const registeredUsers = JSON.parse(localStorage.getItem('moneymind_users') || '[]');
       const user = registeredUsers.find(
-        (u) => (u.email === email || u.username === email) && u.password === password
+        (u) => (u.email.toLowerCase() === normalizedInput || u.username.trim().toLowerCase() === normalizedInput) && u.password === password
       );
 
       if (user) {
         localStorage.setItem('moneymind_session', JSON.stringify({
-          email: user.email,
+          email: user.email.toLowerCase(),
           name: user.username,
           loggedInAt: new Date().toISOString(),
         }));
@@ -72,25 +74,28 @@ export default function LoginPage({ onLogin, onNavigate }) {
 
     setIsLoading(true);
 
+    const trimmedUsername = username.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
     setTimeout(() => {
       const registeredUsers = JSON.parse(localStorage.getItem('moneymind_users') || '[]');
       
       // Check if email already registered
-      if (registeredUsers.some((u) => u.email === email)) {
+      if (registeredUsers.some((u) => u.email.toLowerCase() === normalizedEmail)) {
         setError('Email sudah terdaftar! Gunakan email lain. 📧');
         setIsLoading(false);
         return;
       }
 
       // Check if username already registered
-      if (registeredUsers.some((u) => u.username === username)) {
+      if (registeredUsers.some((u) => u.username.trim().toLowerCase() === trimmedUsername.toLowerCase())) {
         setError('Username sudah digunakan! Pilih username lain. 👤');
         setIsLoading(false);
         return;
       }
 
       // Save new user
-      const newUser = { username, email, password };
+      const newUser = { username: trimmedUsername, email: normalizedEmail, password };
       registeredUsers.push(newUser);
       localStorage.setItem('moneymind_users', JSON.stringify(registeredUsers));
 

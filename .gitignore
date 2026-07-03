@@ -28,3 +28,5 @@ yolov8n.pt
 # Local environment secrets
 .env
 
+# Local Node.js executable folder
+node-v20.11.1-win-x64/
