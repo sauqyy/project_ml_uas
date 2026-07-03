@@ -319,7 +319,7 @@ function App() {
 
   // currentPage === 'app' — main dashboard
   return (
-    <div className="dashboard-wrapper p-8">
+    <div className="min-h-screen p-8 bg-slate-50">
       <div className="container mx-auto p-0" style={{ maxWidth: '1600px' }}>
         <Header
           activeTab={activeTab}
