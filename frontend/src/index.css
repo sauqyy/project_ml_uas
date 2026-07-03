@@ -2068,9 +2068,15 @@ h4 {
   transform: translateY(0);
 }
 
-/* Dashboard Wrapper with premium blue-indigo gradient */
+/* Dashboard Wrapper with premium dark mode theme matching the homepage */
 .dashboard-wrapper {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 50%, #e0e7ff 100%);
+  --bg-app: #0a0a1a;
+  --bg-card: #0f0f23;
+  --border-color: rgba(255, 255, 255, 0.06);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  background: #0a0a1a;
   min-height: 100vh;
 }
 
@@ -3091,4 +3097,82 @@ h4 {
   .home-nav-menu {
     display: none; /* Hide nav items on small screens */
   }
+}
+
+
+/* ========================================== */
+/* Dashboard Dark Theme Overrides             */
+/* ========================================== */
+
+.dashboard-wrapper .bg-white.border-slate-200 {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+
+.dashboard-wrapper .tab-btn {
+  color: var(--text-secondary);
+}
+
+.dashboard-wrapper .tab-btn.active {
+  background-color: var(--bg-app) !important;
+  color: var(--primary) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dashboard-wrapper .tab-btn:hover:not(.active) {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.dashboard-wrapper .modal-content {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dashboard-wrapper .fab {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dashboard-wrapper .fab:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.dashboard-wrapper .btn-dismiss {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.dashboard-wrapper .btn-dismiss:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dashboard-wrapper input,
+.dashboard-wrapper select,
+.dashboard-wrapper textarea {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.dashboard-wrapper input:focus,
+.dashboard-wrapper select:focus,
+.dashboard-wrapper textarea:focus {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: var(--primary) !important;
+}
+
+/* Tooltip dark mode override for charts */
+.dashboard-wrapper .recharts-default-tooltip {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.dashboard-wrapper .recharts-tooltip-item {
+  color: var(--text-secondary) !important;
 }

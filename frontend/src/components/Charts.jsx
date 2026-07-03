@@ -44,7 +44,7 @@ export function DailySpendingTrend({ expenses }) {
             <div className="flex-1 w-full" style={{ minHeight: '200px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={data}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={true} stroke="#e2e8f0" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={true} stroke="var(--border-color)" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                         <Tooltip
@@ -104,7 +104,7 @@ export function SpendingByCategory({ expenses }) {
                                 dataKey="value"
                             >
                                 {data.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.color} stroke="white" strokeWidth={2} />
+                                    <Cell key={`cell-${index}`} fill={entry.color} stroke="var(--bg-card)" strokeWidth={2} />
                                 ))}
                             </Pie>
                             <Tooltip />
@@ -148,7 +148,7 @@ export function ExpensesByCategory({ expenses }) {
             <div className="flex-1 w-full" style={{ minHeight: '200px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data} barSize={40}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
                         <XAxis
                             dataKey="name"
                             axisLine={false}
@@ -160,7 +160,7 @@ export function ExpensesByCategory({ expenses }) {
                             height={60}
                         />
                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                        <Tooltip cursor={{ fill: '#f1f5f9' }} />
+                        <Tooltip cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }} />
                         <Bar dataKey="value" fill="#818cf8" radius={[4, 4, 0, 0]} />
                     </BarChart>
                 </ResponsiveContainer>
