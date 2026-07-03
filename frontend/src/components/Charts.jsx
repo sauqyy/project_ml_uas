@@ -3,17 +3,44 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 // Color Palette
 const COLORS = {
-    'Food & Dining': '#3b82f6', // Blue
-    'Shopping': '#10b981', // Emerald
-    'Transportation': '#facc15', // Yellow
-    'Bills & Utilities': '#f97316', // Orange
-    'Entertainment': '#c084fc', // Purple
-    'Healthcare': '#818cf8', // Indigo
-    'Other': '#94a3b8', // Slate
-    'Transportasi': '#facc15', // Yellow
-    'Makanan': '#3b82f6', // Blue
-    'Kebutuhan': '#10b981', // Emerald
-    'Lain-lain': '#94a3b8' // Slate
+    'Food & Dining': '#3b82f6',
+    'Shopping': '#10b981',
+    'Transportation': '#facc15',
+    'Bills & Utilities': '#f97316',
+    'Entertainment': '#c084fc',
+    'Healthcare': '#818cf8',
+    'Other': '#94a3b8',
+    'Transportasi': '#facc15',
+    'Makanan': '#3b82f6',
+    'Kebutuhan': '#10b981',
+    'Lain-lain': '#94a3b8'
+};
+
+// --- Helper: Format number as Rp with comma separators ---
+const formatRp = (value) => {
+    if (value === 0) return 'Rp 0';
+    return 'Rp ' + Number(value).toLocaleString('id-ID');
+};
+
+// --- Compact Rp for Y-axis ticks ---
+const formatRpAxis = (value) => {
+    if (value === 0) return '0';
+    if (value >= 1000000) return 'Rp ' + (value / 1000000).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt';
+    if (value >= 1000) return 'Rp ' + (value / 1000).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' rb';
+    return 'Rp ' + value;
+};
+
+// --- Custom Tooltip for money charts ---
+const MoneyTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+        return (
+            <div style={{ background: '#fff', borderRadius: '8px', padding: '8px 14px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.15)', fontSize: '13px' }}>
+                {label && <p style={{ marginBottom: '4px', color: '#64748b', fontWeight: 600 }}>{label}</p>}
+                <p style={{ color: '#8b5cf6', fontWeight: 700 }}>{formatRp(payload[0].value)}</p>
+            </div>
+        );
+    }
+    return null;
 };
 
 // --- Daily Spending Trend Data ---
@@ -46,10 +73,8 @@ export function DailySpendingTrend({ expenses }) {
                     <LineChart data={data}>
                         <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={true} stroke="#e2e8f0" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                        <Tooltip
-                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={formatRpAxis} width={90} />
+                        <Tooltip content={<MoneyTooltip />} />
                         <Line
                             type="monotone"
                             dataKey="value"
@@ -107,7 +132,19 @@ export function SpendingByCategory({ expenses }) {
                                     <Cell key={`cell-${index}`} fill={entry.color} stroke="white" strokeWidth={2} />
                                 ))}
                             </Pie>
-                            <Tooltip />
+                            <Tooltip content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                    const entry = payload[0].payload;
+                                    return (
+                                        <div style={{ background: '#fff', borderRadius: '8px', padding: '8px 14px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.15)', fontSize: '13px' }}>
+                                            <p style={{ fontWeight: 700, color: '#1e293b', marginBottom: '2px' }}>{entry.name}</p>
+                                            <p style={{ color: entry.color, fontWeight: 600 }}>{entry.value}%</p>
+                                            <p style={{ color: '#64748b', fontSize: '12px' }}>{formatRp(entry.rawTotal)}</p>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            }} />
                         </PieChart>
                     </ResponsiveContainer>
                 )}
@@ -159,8 +196,8 @@ export function ExpensesByCategory({ expenses }) {
                             textAnchor="end"
                             height={60}
                         />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                        <Tooltip cursor={{ fill: '#f1f5f9' }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={formatRpAxis} width={90} />
+                        <Tooltip content={<MoneyTooltip />} cursor={{ fill: '#f1f5f9' }} />
                         <Bar dataKey="value" fill="#818cf8" radius={[4, 4, 0, 0]} />
                     </BarChart>
                 </ResponsiveContainer>
