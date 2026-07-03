@@ -3,12 +3,6 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 
-// One-time clean up of all user accounts on the client-side
-if (!localStorage.getItem('moneymind_accounts_cleared_v1')) {
-  localStorage.removeItem('moneymind_users');
-  localStorage.removeItem('moneymind_session');
-  localStorage.setItem('moneymind_accounts_cleared_v1', 'true');
-}
 
 // Global Fetch Interceptor for User-Specific Database Separation
 const originalFetch = window.fetch;
