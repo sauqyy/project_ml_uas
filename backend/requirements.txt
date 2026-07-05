@@ -1,8 +1,24 @@
+# --- Core web & database ---
 Flask>=3.0.0
 flask-cors>=4.0.0
 sqlalchemy>=2.0.0
+pydantic>=2.0.0
+
+# --- Machine Learning ---
 pandas>=2.0.0
 numpy>=1.20.0
 scikit-learn>=1.0.0
 statsmodels>=0.13.0
+prophet>=1.1.0
+joblib>=1.2.0
+
+# --- Telegram bot & AI parsing (opsional, hanya untuk fitur bot Telegram) ---
+pyTelegramBotAPI>=4.12.0
+google-generativeai>=0.5.0
+
+# --- OCR struk (opsional, hanya untuk fitur foto struk di Telegram) ---
+easyocr>=1.7.0
+Pillow>=9.0.0
+
+# --- Production server (opsional) ---
 gunicorn>=21.0.0

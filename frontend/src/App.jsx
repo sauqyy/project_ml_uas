@@ -11,9 +11,39 @@ import HomePage from './components/HomePage';
 import LoginPage from './components/LoginPage';
 import EditExpenseModal from './components/EditExpenseModal';
 import LabelingView from './components/LabelingView';
+import InvestmentView from './components/InvestmentView';
 import { Plus } from 'lucide-react';
 
 const DEFAULT_CURRENCY = { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah' };
+
+const DEFAULT_COLORS = {
+  'Food & Dining': '#3b82f6',
+  'Shopping': '#10b981',
+  'Transportation': '#facc15',
+  'Bills & Utilities': '#f97316',
+  'Entertainment': '#c084fc',
+  'Healthcare': '#818cf8',
+  'Other': '#94a3b8',
+  'Transportasi': '#facc15',
+  'Makanan': '#3b82f6',
+  'Kebutuhan': '#10b981',
+  'Lain-lain': '#94a3b8'
+};
+
+const apiFetch = (url, options = {}) => {
+  const session = localStorage.getItem('moneymind_session');
+  const email = session ? JSON.parse(session).email : 'demo@moneymind.com';
+  
+  const headers = {
+    ...options.headers,
+    'X-User-Email': email
+  };
+  
+  return fetch(url, {
+    ...options,
+    headers
+  });
+};
 
 function App() {
   // Auth & page state
@@ -33,6 +63,23 @@ function App() {
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [categories, setCategories] = useState([]);
   const [isSecretUnlocked, setIsSecretUnlocked] = useState(false);
+  const [categoryColors, setCategoryColors] = useState(() => {
+    const saved = localStorage.getItem('moneymind_category_colors');
+    if (saved) {
+      try {
+        return { ...DEFAULT_COLORS, ...JSON.parse(saved) };
+      } catch (e) {
+        // ignore
+      }
+    }
+    return DEFAULT_COLORS;
+  });
+
+  const handleUpdateCategoryColor = (category, color) => {
+    const updated = { ...categoryColors, [category]: color };
+    setCategoryColors(updated);
+    localStorage.setItem('moneymind_category_colors', JSON.stringify(updated));
+  };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
@@ -58,30 +105,70 @@ function App() {
     setCurrentPage(page);
   };
 
-  const handleUpdateProfile = (updatedProfile) => {
+  const handleUpdateProfile = async (updatedProfile) => {
     const currentSession = JSON.parse(localStorage.getItem('moneymind_session') || '{}');
-    const newSession = {
-      ...currentSession,
-      name: updatedProfile.username,
-      avatar: updatedProfile.avatar
-    };
-    localStorage.setItem('moneymind_session', JSON.stringify(newSession));
-    setUserSession(newSession);
 
-    const registeredUsers = JSON.parse(localStorage.getItem('moneymind_users') || '[]');
-    const userIndex = registeredUsers.findIndex(u => u.email === currentSession.email);
-    if (userIndex !== -1) {
-      registeredUsers[userIndex].username = updatedProfile.username;
-      registeredUsers[userIndex].avatar = updatedProfile.avatar;
-      if (updatedProfile.password) {
-        registeredUsers[userIndex].password = updatedProfile.password;
+    try {
+      const res = await fetch('/api/auth/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: currentSession.email,
+          username: updatedProfile.username,
+          avatar: updatedProfile.avatar,
+          currentPassword: updatedProfile.currentPassword || null,
+          newPassword: updatedProfile.newPassword || null,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { ok: false, error: data.error || 'Failed to update profile.' };
       }
-      localStorage.setItem('moneymind_users', JSON.stringify(registeredUsers));
+
+      const newSession = {
+        ...currentSession,
+        name: data.user.username,
+        avatar: data.user.avatar,
+      };
+      localStorage.setItem('moneymind_session', JSON.stringify(newSession));
+      setUserSession(newSession);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: 'Tidak dapat terhubung ke server. 🌐' };
     }
   };
 
+  // One-time migration: move any legacy localStorage accounts into the DB
+  useEffect(() => {
+    if (localStorage.getItem('moneymind_migrated')) return;
+    const legacy = localStorage.getItem('moneymind_users');
+    if (!legacy) return;
+
+    let users = [];
+    try {
+      users = JSON.parse(legacy);
+    } catch {
+      localStorage.setItem('moneymind_migrated', 'true');
+      return;
+    }
+
+    if (!Array.isArray(users) || users.length === 0) {
+      localStorage.setItem('moneymind_migrated', 'true');
+      return;
+    }
+
+    fetch('/api/auth/migrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users }),
+    })
+      .then(() => localStorage.setItem('moneymind_migrated', 'true'))
+      .catch(() => { /* leave flag unset so it retries next load */ });
+  }, []);
+
   const loadCategories = () => {
-    fetch('/api/categories')
+    apiFetch('/api/categories')
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch categories");
         return res.json();
@@ -91,7 +178,7 @@ function App() {
   };
 
   const handleAddCategory = (name) => {
-    return fetch('/api/categories', {
+    return apiFetch('/api/categories', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -114,7 +201,7 @@ function App() {
   };
 
   const handleDeleteCategory = (name) => {
-    return fetch(`/api/categories/${encodeURIComponent(name)}`, {
+    return apiFetch(`/api/categories/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     })
       .then(res => {
@@ -125,7 +212,7 @@ function App() {
 
   const loadAllData = () => {
     // 1. Fetch Currency/Settings
-    fetch('/api/settings')
+    apiFetch('/api/settings')
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch settings");
         return res.json();
@@ -134,7 +221,7 @@ function App() {
       .catch(err => console.error("Error fetching settings:", err));
 
     // 2. Fetch Expenses
-    fetch('/api/expenses')
+    apiFetch('/api/expenses')
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch expenses");
         return res.json();
@@ -143,7 +230,7 @@ function App() {
       .catch(err => console.error("Error fetching expenses:", err));
 
     // 3. Fetch Incomes
-    fetch('/api/incomes')
+    apiFetch('/api/incomes')
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch incomes");
         return res.json();
@@ -153,7 +240,7 @@ function App() {
   };
 
   const fetchTelegramStatus = () => {
-    fetch('/api/telegram/status')
+    apiFetch('/api/telegram/status')
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch Telegram status");
         return res.json();
@@ -163,7 +250,7 @@ function App() {
   };
 
   const handleDisconnectTelegram = () => {
-    fetch('/api/telegram/disconnect', {
+    apiFetch('/api/telegram/disconnect', {
       method: 'POST'
     })
       .then(res => {
@@ -192,7 +279,7 @@ function App() {
 
   // Handlers
   const handleAddExpense = (newExpense) => {
-    fetch('/api/expenses', {
+    apiFetch('/api/expenses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -210,7 +297,7 @@ function App() {
   };
 
   const handleAddIncome = (newIncome) => {
-    fetch('/api/incomes', {
+    apiFetch('/api/incomes', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -228,7 +315,7 @@ function App() {
   };
 
   const handleDeleteExpense = (id) => {
-    fetch(`/api/expenses/${id}`, {
+    apiFetch(`/api/expenses/${id}`, {
       method: 'DELETE',
     })
       .then(res => {
@@ -239,7 +326,7 @@ function App() {
   };
 
   const handleEditExpense = (id, updatedExpense) => {
-    fetch(`/api/expenses/${id}`, {
+    apiFetch(`/api/expenses/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -257,7 +344,7 @@ function App() {
   };
 
   const handleDeleteIncome = (id) => {
-    fetch(`/api/incomes/${id}`, {
+    apiFetch(`/api/incomes/${id}`, {
       method: 'DELETE',
     })
       .then(res => {
@@ -268,7 +355,7 @@ function App() {
   };
 
   const handleResetData = () => {
-    return fetch('/api/reset', {
+    return apiFetch('/api/reset', {
       method: 'POST',
     })
       .then(res => {
@@ -279,7 +366,7 @@ function App() {
   };
 
   const handleUpdateCurrency = (newCurrency) => {
-    fetch('/api/settings', {
+    apiFetch('/api/settings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -346,6 +433,7 @@ function App() {
             transactionCount={metrics.count}
             avgTransaction={metrics.avg}
             currencySymbol={currency.symbol}
+            categoryColors={categoryColors}
           />
         ) : activeTab === 'monthly' ? (
           <MonthlyView
@@ -362,6 +450,14 @@ function App() {
             expenses={expenses}
             incomes={incomes}
             currencySymbol={currency.symbol}
+            categoryColors={categoryColors}
+          />
+        ) : activeTab === 'investment' ? (
+          <InvestmentView
+            expenses={expenses}
+            incomes={incomes}
+            currencySymbol={currency.symbol}
+            categoryColors={categoryColors}
           />
         ) : activeTab === 'labeling' ? (
           <LabelingView
@@ -432,6 +528,9 @@ function App() {
         onUploadSuccess={loadAllData}
         onResetData={handleResetData}
         setIsSecretUnlocked={setIsSecretUnlocked}
+        categories={categories}
+        categoryColors={categoryColors}
+        onUpdateCategoryColor={handleUpdateCategoryColor}
       />
     </div>
   );

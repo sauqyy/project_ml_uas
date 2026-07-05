@@ -10,7 +10,13 @@ export default function LabelingView({ onUploadSuccess, categories = [], onAddCa
     const loadData = () => {
         // Load labeling jobs
         setLoadingJobs(true);
-        fetch('/api/labeling-jobs')
+        const session = JSON.parse(localStorage.getItem('moneymind_session') || '{}');
+        const userEmail = session.email || 'demo@moneymind.com';
+        fetch('/api/labeling-jobs', {
+            headers: {
+                'X-User-Email': userEmail
+            }
+        })
             .then(res => res.json())
             .then(data => setLabelingJobs(data))
             .catch(err => console.error("Error loading labeling jobs:", err))
@@ -23,9 +29,14 @@ export default function LabelingView({ onUploadSuccess, categories = [], onAddCa
 
     const handleLabelChange = (desc, newCategory) => {
         setUpdatingJobDesc(desc);
+        const session = JSON.parse(localStorage.getItem('moneymind_session') || '{}');
+        const userEmail = session.email || 'demo@moneymind.com';
         fetch('/api/confirm-label', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-User-Email': userEmail
+            },
             body: JSON.stringify({ desc, category: newCategory })
         })
             .then(async (res) => {
@@ -43,7 +54,7 @@ export default function LabelingView({ onUploadSuccess, categories = [], onAddCa
                 }
             })
             .catch(err => {
-                alert("Gagal memperbarui kategori: " + err.message);
+                alert("Failed to update category: " + err.message);
             })
             .finally(() => {
                 setUpdatingJobDesc(null);
@@ -59,37 +70,37 @@ export default function LabelingView({ onUploadSuccess, categories = [], onAddCa
                     </div>
                     <div>
                         <h2 className="text-lg font-bold flex items-center gap-2">
-                            Pelabelan AI & Interactive Machine Learning
+                            AI Labeling & Interactive Machine Learning
                             <Sparkles size={18} className="text-amber-500 animate-pulse" />
                         </h2>
                         <p className="text-muted text-sm">
-                            Halaman ini memuat daftar deskripsi transaksi yang unik. Anda dapat mengonfirmasi atau mengubah kategori yang diprediksi oleh AI.
+                            This page loads a list of unique transaction descriptions. You can confirm or change the category predicted by the AI.
                         </p>
                     </div>
                 </div>
 
                 <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 text-xs text-indigo-700 leading-relaxed mb-6">
-                    <strong>💡 Bagaimana Cara Kerjanya?</strong> Ketika Anda mengganti kategori untuk sebuah transaksi (misalnya mengubah <em>"pembelian kopi susu"</em> menjadi <strong>Makanan</strong>), sistem akan menyimpan preferensi Anda dan secara otomatis melatih ulang (*retrain*) model <strong>Logistic Regression</strong> di backend. Model baru ini akan belajar dari koreksi Anda, sehingga transaksi lain yang serupa (seperti <em>"kopi susu gula aren"</em> atau <em>"beli kopi"</em>) akan ikut berubah kategorinya secara cerdas!
+                    <strong>💡 How It Works?</strong> When you change the category for a transaction (e.g., changing <em>"coffee purchase"</em> to <strong>Food & Dining</strong>), the system saves your preference and automatically retrains the <strong>Logistic Regression</strong> model in the backend. This new model learns from your corrections, so other similar transactions (like <em>"iced latte"</em> or <em>"buy coffee"</em>) will also change their categories intelligently!
                 </div>
 
                 {loadingJobs ? (
                     <div className="text-center py-12 text-slate-500 text-sm">
                         <div className="animate-spin inline-block w-6 h-6 border-2 border-primary border-t-transparent rounded-full mb-2"></div>
-                        <p>Memuat daftar transaksi...</p>
+                        <p>Loading transactions...</p>
                     </div>
                 ) : labelingJobs.length === 0 ? (
                     <div className="text-center py-12 text-slate-500 text-sm card bg-slate-50 border-dashed">
-                        Belum ada transaksi pengeluaran yang dapat dilabeli.
+                        No expense transactions available to label.
                     </div>
                 ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs" style={{ overflow: 'visible' }}>
                         <table className="w-full text-left border-collapse" style={{ tableLayout: 'fixed' }}>
                             <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
-                                    <th className="p-4" style={{ width: '40%' }}>Deskripsi Transaksi</th>
-                                    <th className="p-4 text-center" style={{ width: '15%' }}>Jumlah Transaksi</th>
-                                    <th className="p-4 text-center" style={{ width: '20%' }}>Status Klasifikasi</th>
-                                    <th className="p-4 text-right" style={{ width: '25%' }}>Aksi / Kategori</th>
+                                    <th className="p-4" style={{ width: '40%' }}>Transaction Description</th>
+                                    <th className="p-4 text-center" style={{ width: '15%' }}>Transaction Count</th>
+                                    <th className="p-4 text-center" style={{ width: '20%' }}>Classification Status</th>
+                                    <th className="p-4 text-right" style={{ width: '25%' }}>Action / Category</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -111,12 +122,12 @@ export default function LabelingView({ onUploadSuccess, categories = [], onAddCa
                                                     borderColor: job.confirmed ? '#bbf7d0' : '#bfdbfe'
                                                 }}
                                             >
-                                                {job.confirmed ? '✅ Terkonfirmasi' : '🤖 Prediksi AI'}
+                                                {job.confirmed ? '✅ Confirmed' : '🤖 AI Prediction'}
                                             </span>
                                         </td>
                                         <td className="p-4 text-right" style={{ overflow: 'visible' }}>
                                             {updatingJobDesc === job.desc ? (
-                                                <span className="text-xs text-primary font-bold animate-pulse">Melatih Ulang Model...</span>
+                                                <span className="text-xs text-primary font-bold animate-pulse">Retraining Model...</span>
                                             ) : (
                                                 <div style={{ width: '180px', display: 'inline-block', textAlign: 'left', position: 'relative' }}>
                                                     <CategorySelect

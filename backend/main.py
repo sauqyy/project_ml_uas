@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 from sqlalchemy.orm import Session
+from werkzeug.security import generate_password_hash, check_password_hash
 import sys
 import os
 
@@ -19,6 +20,8 @@ import google.generativeai as genai
 from database import SessionLocal, engine, Base
 import models
 import ai_models
+import ml_categorizer  # model kategorisasi baru (rules + NB + kamus personal)
+import ml_forecast     # Prophet forecast + budget monitor + anomali MAD
 
 # Initialize DB tables
 Base.metadata.create_all(bind=engine)
@@ -26,6 +29,10 @@ Base.metadata.create_all(bind=engine)
 app = Flask(__name__, static_folder="static")
 app.debug = True
 CORS(app) # Enable CORS for all routes during development
+
+# Built-in demo account credentials
+DEMO_EMAIL = "demo@moneymind.com"
+DEMO_PASSWORD = "demo123"
 
 # Helper to get DB session
 def get_db():
@@ -84,6 +91,22 @@ def seed_db():
             ]
             db.add_all(default_categories)
             db.commit()
+
+        # Pastikan kategori keluaran model kategorisasi tersedia (untuk dropdown & warna)
+        existing_cat_names = {c.name for c in db.query(models.Category).all()}
+        for cat_name in ml_categorizer.APP_CATEGORIES:
+            if cat_name not in existing_cat_names:
+                db.add(models.Category(name=cat_name))
+        db.commit()
+
+        # Seed built-in demo account so it works with DB-based auth
+        if db.query(models.User).filter(models.User.email == DEMO_EMAIL).count() == 0:
+            db.add(models.User(
+                username="Demo User",
+                email=DEMO_EMAIL,
+                password_hash=generate_password_hash(DEMO_PASSWORD),
+            ))
+            db.commit()
     finally:
         db.close()
 
@@ -94,6 +117,162 @@ seed_db()
 def get_user_email():
     email = request.headers.get("X-User-Email") or request.args.get("email") or "demo@moneymind.com"
     return email.strip().lower()
+
+def predict_categories(descs, user_email, confirmed_dict=None):
+    """Prediksi kategori untuk banyak deskripsi memakai model kategorisasi baru.
+    Koreksi user (confirmed_dict, exact desc) selalu menang."""
+    confirmed_dict = confirmed_dict or {}
+    result = {}
+    for d in descs:
+        dd = (d or "").strip()
+        if dd in result:
+            continue
+        if dd in confirmed_dict:
+            result[dd] = confirmed_dict[dd]
+        else:
+            result[dd] = ml_categorizer.categorize(dd, user_email)["category"]
+    return result
+
+# --- Authentication Endpoints (DB-backed) ---
+
+def _user_public(user):
+    return {
+        "username": user.username,
+        "email": user.email,
+        "avatar": user.avatar,
+    }
+
+@app.route("/api/auth/register", methods=["POST"])
+def auth_register():
+    data = request.json or {}
+    username = (data.get("username") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not username or not email or not password:
+        return jsonify({"error": "Semua field wajib diisi."}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password minimal harus 6 karakter! 🔑"}), 400
+    if email == DEMO_EMAIL:
+        return jsonify({"error": "Email ini adalah akun demo bawaan dan tidak dapat didaftarkan kembali! 📧"}), 400
+    if username.lower() in ("demo", "demo user"):
+        return jsonify({"error": "Username ini adalah akun demo bawaan dan tidak dapat digunakan! 👤"}), 400
+
+    db = get_db()
+    try:
+        if db.query(models.User).filter(models.User.email == email).first():
+            return jsonify({"error": "Email sudah terdaftar! Gunakan email lain. 📧"}), 409
+        if db.query(models.User).filter(models.User.username.ilike(username)).first():
+            return jsonify({"error": "Username sudah digunakan! Pilih username lain. 👤"}), 409
+
+        user = models.User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return jsonify({"message": "Registrasi berhasil", "user": _user_public(user)}), 201
+    finally:
+        db.close()
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    data = request.json or {}
+    identifier = (data.get("identifier") or data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not identifier or not password:
+        return jsonify({"error": "Email/Username dan password wajib diisi."}), 400
+
+    db = get_db()
+    try:
+        user = db.query(models.User).filter(
+            (models.User.email == identifier) | (models.User.username.ilike(identifier))
+        ).first()
+        if not user or not check_password_hash(user.password_hash, password):
+            return jsonify({"error": "Email/Username atau password salah. Coba lagi! 🔒"}), 401
+        return jsonify({"message": "Login berhasil", "user": _user_public(user)})
+    finally:
+        db.close()
+
+@app.route("/api/auth/update-profile", methods=["POST"])
+def auth_update_profile():
+    data = request.json or {}
+    email = (data.get("email") or get_user_email()).strip().lower()
+
+    db = get_db()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if not user:
+            return jsonify({"error": "Akun tidak ditemukan."}), 404
+
+        new_username = (data.get("username") or "").strip()
+        avatar = data.get("avatar")
+        current_password = data.get("currentPassword")
+        new_password = data.get("newPassword")
+
+        # Username change (with uniqueness check)
+        if new_username and new_username.lower() != (user.username or "").lower():
+            clash = db.query(models.User).filter(
+                models.User.username.ilike(new_username),
+                models.User.id != user.id,
+            ).first()
+            if clash:
+                return jsonify({"error": "Username sudah digunakan! Pilih username lain. 👤"}), 409
+            user.username = new_username
+        elif new_username:
+            user.username = new_username
+
+        # Avatar update (allow clearing with empty string, skip when not provided)
+        if avatar is not None:
+            user.avatar = avatar
+
+        # Password change
+        if new_password:
+            if not check_password_hash(user.password_hash, current_password or ""):
+                return jsonify({"error": "Password lama salah! 🔒"}), 403
+            if len(new_password) < 6:
+                return jsonify({"error": "Password baru minimal harus 6 karakter! 🔑"}), 400
+            user.password_hash = generate_password_hash(new_password)
+
+        db.commit()
+        db.refresh(user)
+        return jsonify({"message": "Profil berhasil diperbarui", "user": _user_public(user)})
+    finally:
+        db.close()
+
+@app.route("/api/auth/migrate", methods=["POST"])
+def auth_migrate():
+    """One-time import of legacy localStorage accounts into the DB."""
+    data = request.json or {}
+    legacy_users = data.get("users") or []
+
+    db = get_db()
+    created = 0
+    try:
+        for u in legacy_users:
+            email = (u.get("email") or "").strip().lower()
+            username = (u.get("username") or "").strip()
+            password = u.get("password") or ""
+            if not email or not username or not password or email == DEMO_EMAIL:
+                continue
+            exists = db.query(models.User).filter(
+                (models.User.email == email) | (models.User.username.ilike(username))
+            ).first()
+            if exists:
+                continue
+            db.add(models.User(
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),
+            ))
+            created += 1
+        db.commit()
+        return jsonify({"migrated": created})
+    finally:
+        db.close()
 
 # Expenses Endpoints
 @app.route("/api/expenses", methods=["GET"])
@@ -168,14 +347,23 @@ def update_expense(expense_id):
         if not expense:
             return jsonify({"detail": "Expense not found"}), 404
         
+        category_changed = data.get("category") != expense.category
         expense.amount = float(data["amount"])
         expense.category = data["category"]
         expense.desc = data.get("desc")
         expense.date = data["date"]
         if "displayDate" in data:
             expense.displayDate = data["displayDate"]
-            
+
         db.commit()
+
+        # Feedback loop: user mengubah kategori -> ajari model kategorisasi
+        if category_changed and expense.desc:
+            try:
+                ml_categorizer.record_correction(expense.desc, expense.category, user_email)
+            except Exception as e:
+                print(f"record_correction (update_expense) failed: {e}")
+
         return jsonify({
             "id": expense.id,
             "amount": expense.amount,
@@ -296,45 +484,153 @@ def update_settings():
 
 # --- AI & File Upload API Endpoints ---
 
+def _user_expenses_list(db, user_email):
+    """Transaksi pengeluaran user (dari DB) untuk pipeline ML forecast/anomali."""
+    expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
+    return [{"id": e.id, "desc": e.desc, "amount": e.amount, "date": e.date, "category": e.category} for e in expenses]
+
 @app.route("/api/anomalies", methods=["GET"])
 def get_anomalies():
+    """Anomali pengeluaran (modified z-score median+MAD) dari transaksi akun user."""
     db = get_db()
     try:
         user_email = get_user_email()
-        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
-        expense_list = []
-        for e in expenses:
-            expense_list.append({
-                "id": e.id,
-                "amount": e.amount,
-                "category": e.category,
-                "desc": e.desc,
-                "date": e.date,
-                "displayDate": e.displayDate
+        expenses = _user_expenses_list(db, user_email)
+        items = ml_forecast.pending_anomalies(user_email, expenses, limit=20)
+        result = []
+        for a in items:
+            level_label = "Sangat Tinggi" if a["anomaly_level"] == "severe" else "Tinggi"
+            desc = (
+                f"Transaksi '{a['transaksi']}' sebesar Rp{int(a['jumlah']):,} "
+                f"jauh di atas kebiasaan (median Rp{int(a['median_pengeluaran']):,}). "
+                f"Tandai apakah ini pengeluaran rutin atau hanya sekali saja."
+            )
+            median_val = float(a["median_pengeluaran"])
+            ratio = round(float(a["jumlah"]) / median_val, 1) if median_val > 0 else 1.0
+            result.append({
+                "id": a["id"],
+                "title": a["transaksi"],
+                "category": a.get("category", "Lain-lain"),
+                "level": a["anomaly_level"],
+                "amount": a["jumlah"],
+                "date": a["tanggal"],
+                "description": desc,
+                "ratio": ratio,
+                "median_pengeluaran": a["median_pengeluaran"]
             })
-        anomalies = ai_models.detect_anomalies_iso_forest(expense_list)
-        return jsonify(anomalies)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in get_anomalies: {e}")
+        return jsonify([])
     finally:
         db.close()
 
+@app.route("/api/anomalies/decide", methods=["POST"])
+def decide_anomaly_route():
+    """Feedback loop anomali: user putuskan transaksi rutin (include) / sekali saja (exclude)."""
+    data = request.json or {}
+    tid = data.get("transaksi_id")
+    keep = bool(data.get("keep_as_routine", False))
+    if not tid:
+        return jsonify({"detail": "transaksi_id wajib diisi"}), 400
+    try:
+        user_email = get_user_email()
+        res = ml_forecast.decide_anomaly(user_email, str(tid), keep)
+        return jsonify(res)
+    except Exception as e:
+        print(f"Error in decide_anomaly: {e}")
+        return jsonify({"detail": str(e)}), 500
+
 @app.route("/api/forecast", methods=["GET"])
 def get_forecast():
+    """Forecast pengeluaran harian (Prophet) dari transaksi akun user."""
+    try:
+        days = int(request.args.get("days", 14))
+    except Exception:
+        days = 14
     db = get_db()
     try:
         user_email = get_user_email()
-        expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
-        expense_list = []
-        for e in expenses:
-            expense_list.append({
-                "id": e.id,
-                "amount": e.amount,
-                "category": e.category,
-                "desc": e.desc,
-                "date": e.date,
-                "displayDate": e.displayDate
-            })
-        forecast = ai_models.get_arima_forecast_5days(expense_list)
-        return jsonify(forecast)
+        expenses = _user_expenses_list(db, user_email)
+        result = ml_forecast.get_forecast(user_email, expenses, days=days)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in get_forecast: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/api/budget-status", methods=["GET"])
+def budget_status_route():
+    """Budget monitor: proyeksi pengeluaran bulan berjalan vs target tabungan & pendapatan."""
+    db = get_db()
+    try:
+        user_email = get_user_email()
+        expenses = _user_expenses_list(db, user_email)
+        incomes = db.query(models.Income).filter(models.Income.user_email == user_email).all()
+        total_income = sum(i.amount for i in incomes) or 5_000_000
+        try:
+            savings_pct = float(request.args.get("savings_percent", 20))
+        except Exception:
+            savings_pct = 20
+        savings_target = total_income * (savings_pct / 100.0)
+        try:
+            days = int(request.args.get("days", 30))
+        except Exception:
+            days = 30
+        result = ml_forecast.budget_status(user_email, expenses, income=total_income,
+                                           savings_target=savings_target, days=days)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error in budget_status: {e}")
+        return jsonify({"detail": str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/api/import-dataset", methods=["POST"])
+def import_dataset():
+    """Import dataset contoh (CSV histori 1 tahun) ke akun user sebagai transaksi expense.
+    Query ?replace=true (default) mengganti seluruh expense user; false = menambah."""
+    db = get_db()
+    try:
+        user_email = get_user_email()
+        replace = str(request.args.get("replace", "true")).lower() != "false"
+
+        df = ml_forecast.load_transactions()  # baca CSV project (semua expense)
+        if df.empty:
+            return jsonify({"detail": "Dataset kosong / tidak ditemukan"}), 400
+
+        if replace:
+            db.query(models.Expense).filter(models.Expense.user_email == user_email).delete()
+            db.commit()
+
+        # Klasifikasi kategori semua deskripsi via model kategorisasi
+        descs = [str(t) for t in df["Transaksi"].tolist()]
+        confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
+        confirmed_dict = {c.desc: c.category for c in confirmed_list}
+        predictions_map = predict_categories(descs, user_email, confirmed_dict)
+
+        count = 0
+        for _, r in df.iterrows():
+            dt = r["Tanggal Transaksi"]
+            desc = str(r["Transaksi"])
+            amt = float(r["Jumlah_abs"])
+            cat = predictions_map.get(desc.strip(), "Lain-lain")
+            db.add(models.Expense(
+                user_email=user_email,
+                amount=amt,
+                category=cat,
+                desc=desc,
+                date=dt.strftime("%Y-%m-%d"),
+                displayDate=dt.strftime("%a, %b %d, %Y"),
+            ))
+            count += 1
+        db.commit()
+        return jsonify({"imported": count, "replaced": replace}), 201
+    except Exception as e:
+        db.rollback()
+        print(f"Error in import_dataset: {e}")
+        return jsonify({"detail": str(e)}), 500
     finally:
         db.close()
 
@@ -353,10 +649,17 @@ def upload_csv():
         stream = io.StringIO(file.stream.read().decode("utf-8-sig"), newline=None)
         csv_reader = csv.DictReader(stream)
         
-        # Verify columns
+        # Verify columns - support two formats
         headers = csv_reader.fieldnames
-        if not headers or 'Jumlah' not in headers or 'Transaksi' not in headers:
-            return jsonify({"detail": "Invalid file format. Columns must match the transaction history CSV."}), 400
+        if not headers:
+            return jsonify({"detail": "CSV file has no headers."}), 400
+
+        # Detect format: Bank statement (Indonesian) vs App export
+        is_bank_format = 'Jumlah' in headers and 'Transaksi' in headers
+        is_export_format = 'Amount' in headers and 'Description' in headers and 'Date' in headers
+        
+        if not is_bank_format and not is_export_format:
+            return jsonify({"detail": "Format CSV tidak dikenali. Gunakan CSV dari bank statement (kolom: Tanggal Transaksi, Transaksi, Jumlah) atau CSV hasil export Money Mind (kolom: Type, Date, Category/Source, Amount, Description)."}), 400
             
         # Clear existing expenses and incomes for this user to load the new data cleanly
         db.query(models.Expense).filter(models.Expense.user_email == user_email).delete()
@@ -370,69 +673,112 @@ def upload_csv():
             
         if not raw_rows:
             return jsonify({"detail": "CSV file is empty"}), 400
-            
-        # Pre-process details for NLP category classifier
-        nlp_inputs = []
-        for row in raw_rows:
-            desc = row.get('Transaksi', '').strip()
-            nlp_inputs.append({"desc": desc})
-            
-        # Fetch all confirmed labels for this user
-        confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
-        confirmed_dict = {c.desc: c.category for c in confirmed_list}
         
-        # Classify all descriptions using the feedback-aware model
-        predictions_map = ai_models.train_and_predict_with_feedback(nlp_inputs, confirmed_dict)
-        
-        # Parse and save expenses & incomes
         imported_expenses = 0
         imported_incomes = 0
-        
-        for idx, row in enumerate(raw_rows):
-            desc = row.get('Transaksi', '').strip()
-            date_str = row.get('Tanggal Transaksi', '').strip()
-            amount_raw = row.get('Jumlah', '').strip()
+
+        if is_bank_format:
+            # --- BANK STATEMENT FORMAT ---
+            # Kumpulkan deskripsi transaksi untuk klasifikasi kategori
+            all_descs = [row.get('Transaksi', '').strip() for row in raw_rows]
+
+            # Fetch all confirmed labels for this user
+            confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
+            confirmed_dict = {c.desc: c.category for c in confirmed_list}
+
+            # Klasifikasi semua deskripsi memakai model kategorisasi baru (rules + NB + kamus personal)
+            predictions_map = predict_categories(all_descs, user_email, confirmed_dict)
             
-            # Clean amount
-            is_negative = '-' in amount_raw
-            cleaned_digits = re.sub(r'[^\d]', '', amount_raw)
-            if not cleaned_digits:
-                amount_val = 0.0
-            else:
-                amount_val = float(cleaned_digits)
-            
-            # Handle date parsing
-            parsed_dt = pd.to_datetime(date_str, errors='coerce', dayfirst=True)
-            if pd.isna(parsed_dt):
+            for idx, row in enumerate(raw_rows):
+                desc = row.get('Transaksi', '').strip()
+                date_str = row.get('Tanggal Transaksi', '').strip()
+                amount_raw = row.get('Jumlah', '').strip()
+                
+                # Clean amount
+                is_negative = '-' in amount_raw
+                cleaned_digits = re.sub(r'[^\d]', '', amount_raw)
+                if not cleaned_digits:
+                    amount_val = 0.0
+                else:
+                    amount_val = float(cleaned_digits)
+                
+                # Handle date parsing
+                parsed_dt = pd.to_datetime(date_str, errors='coerce', dayfirst=True)
+                if pd.isna(parsed_dt):
+                    parsed_dt = pd.to_datetime(date_str, errors='coerce')
+                    if pd.isna(parsed_dt):
+                        parsed_dt = pd.Timestamp.now()
+                
+                formatted_date = parsed_dt.strftime("%Y-%m-%d")
+                display_date = parsed_dt.strftime("%a, %b %d, %Y")
+                
+                if is_negative:
+                    category = predictions_map.get(desc, 'Lain-lain')
+                    expense = models.Expense(
+                        user_email=user_email,
+                        amount=amount_val,
+                        category=category,
+                        desc=desc,
+                        date=formatted_date,
+                        displayDate=display_date
+                    )
+                    db.add(expense)
+                    imported_expenses += 1
+                else:
+                    income = models.Income(
+                        user_email=user_email,
+                        amount=amount_val,
+                        source=desc,
+                        date=formatted_date
+                    )
+                    db.add(income)
+                    imported_incomes += 1
+        else:
+            # --- APP EXPORT FORMAT ---
+            for idx, row in enumerate(raw_rows):
+                row_type = row.get('Type', '').strip()
+                date_str = row.get('Date', '').strip()
+                category_source = row.get('Category/Source', '').strip()
+                amount_raw = row.get('Amount', '').strip()
+                desc = row.get('Description', '').strip()
+                
+                # Parse amount (can be negative for expenses in export)
+                try:
+                    amount_val = abs(float(amount_raw))
+                except (ValueError, TypeError):
+                    amount_val = 0.0
+                
+                # Handle date parsing
                 parsed_dt = pd.to_datetime(date_str, errors='coerce')
                 if pd.isna(parsed_dt):
-                    parsed_dt = pd.Timestamp.now()
-            
-            formatted_date = parsed_dt.strftime("%Y-%m-%d")
-            display_date = parsed_dt.strftime("%a, %b %d, %Y")
-            
-            if is_negative:
-                category = predictions_map.get(desc, 'Lain-lain')
-                expense = models.Expense(
-                    user_email=user_email,
-                    amount=amount_val,
-                    category=category,
-                    desc=desc,
-                    date=formatted_date,
-                    displayDate=display_date
-                )
-                db.add(expense)
-                imported_expenses += 1
-            else:
-                income = models.Income(
-                    user_email=user_email,
-                    amount=amount_val,
-                    source=desc,
-                    date=formatted_date
-                )
-                db.add(income)
-                imported_incomes += 1
+                    parsed_dt = pd.to_datetime(date_str, errors='coerce', dayfirst=True)
+                    if pd.isna(parsed_dt):
+                        parsed_dt = pd.Timestamp.now()
                 
+                formatted_date = parsed_dt.strftime("%Y-%m-%d")
+                display_date = parsed_dt.strftime("%a, %b %d, %Y")
+                
+                if row_type.lower() == 'expense':
+                    expense = models.Expense(
+                        user_email=user_email,
+                        amount=amount_val,
+                        category=category_source or 'Lain-lain',
+                        desc=desc,
+                        date=formatted_date,
+                        displayDate=display_date
+                    )
+                    db.add(expense)
+                    imported_expenses += 1
+                else:
+                    income = models.Income(
+                        user_email=user_email,
+                        amount=amount_val,
+                        source=category_source or desc,
+                        date=formatted_date
+                    )
+                    db.add(income)
+                    imported_incomes += 1
+
         db.commit()
         return jsonify({
             "message": "File uploaded and processed successfully",
@@ -445,6 +791,7 @@ def upload_csv():
         return jsonify({"detail": f"Error parsing uploaded file: {str(e)}"}), 500
     finally:
         db.close()
+
 
 # Get unique descriptions for labeling confirmation (Secret Mode)
 @app.route("/api/labeling-jobs", methods=["GET"])
@@ -500,17 +847,22 @@ def confirm_label():
             new_label = models.ConfirmedLabel(user_email=user_email, desc=desc, category=category)
             db.add(new_label)
         db.commit()
-        
-        # 2. Retrain and update all expenses in the database for this user
+
+        # Feedback loop: ajari model kategorisasi dengan koreksi user ini
+        try:
+            ml_categorizer.record_correction(desc, category, user_email)
+        except Exception as e:
+            print(f"record_correction (confirm_label) failed: {e}")
+
+        # 2. Re-klasifikasi semua transaksi user memakai model + kamus personal terbaru
         expenses = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
-        expense_list = [{"desc": e.desc, "category": e.category, "amount": e.amount} for e in expenses]
-        
+
         # Fetch all confirmed labels for this user
         confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
         confirmed_dict = {c.desc: c.category for c in confirmed_list}
-        
-        # Retrain and predict
-        predictions_map = ai_models.train_and_predict_with_feedback(expense_list, confirmed_dict)
+
+        # Prediksi ulang kategori tiap deskripsi
+        predictions_map = predict_categories([e.desc for e in expenses], user_email, confirmed_dict)
         
         # Update each expense in the database
         for e in expenses:
@@ -1060,8 +1412,13 @@ def start_telegram_bot():
         if parsed.get("is_expense"):
             desc = parsed.get("desc")
             amount = parsed.get("amount")
-            category = parsed.get("category")
-            
+            # Kategori ditentukan oleh MODEL KATEGORISASI LOKAL (bukan tebakan Gemini)
+            try:
+                category = ml_categorizer.categorize(desc, user_email)["category"]
+            except Exception as e:
+                print(f"Categorizer (telegram text) failed: {e}")
+                category = parsed.get("category") or "Lain-lain"
+
             # Simpan transaksi ke database SQLite
             db = get_db()
             try:
@@ -1164,28 +1521,12 @@ def start_telegram_bot():
                 )
                 return
                 
-            # 3. Klasifikasi Kategori menggunakan Model Machine Learning Lokal (Logistic Regression)
-            db = get_db()
+            # 3. Klasifikasi Kategori menggunakan MODEL KATEGORISASI LOKAL (rules + Naive Bayes + kamus personal)
             try:
-                # Ambil data pengeluaran historis dan feedback pelabelan dari DB untuk demo user
-                expenses_list = db.query(models.Expense).filter(models.Expense.user_email == user_email).all()
-                confirmed_list = db.query(models.ConfirmedLabel).filter(models.ConfirmedLabel.user_email == user_email).all()
-                
-                history_data = [{"desc": e.desc, "category": e.category} for e in expenses_list]
-                user_feedback = {c.desc: c.category for c in confirmed_list}
-                
-                # Gunakan fungsi latih & prediksi lokal
-                predicted_cats = ai_models.train_and_predict_with_feedback(
-                    history_data=history_data,
-                    user_feedback=user_feedback,
-                    test_descriptions=[desc]
-                )
-                category = predicted_cats[0] if predicted_cats else "Lain-lain"
+                category = ml_categorizer.categorize(desc, user_email)["category"]
             except Exception as e:
                 print(f"Error classifying category locally: {e}")
                 category = "Lain-lain"
-            finally:
-                db.close()
                 
             # 4. Simpan transaksi ke database SQLite
             db = get_db()
@@ -1261,8 +1602,14 @@ def serve_frontend(path):
     if path != "" and os.path.exists(file_path):
         return send_from_directory(static_dir, path)
     else:
-        # Fallback to index.html for SPA routing
-        return send_file(os.path.join(static_dir, "index.html"))
+        # Fallback to index.html for SPA routing.
+        # index.html must never be cached, otherwise the browser keeps loading an old
+        # bundle after a rebuild. The hashed assets it references can cache forever.
+        resp = send_file(os.path.join(static_dir, "index.html"))
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
 
 # Start Telegram Bot in a background thread (runs both on local debug server and production WSGI Gunicorn)
 if not globals().get("_bot_thread_started", False):

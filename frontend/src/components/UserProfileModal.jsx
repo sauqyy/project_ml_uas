@@ -21,7 +21,7 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      setError('Ukuran gambar maksimal 2MB! 📁');
+      setError('Image size must be under 2MB! 📁');
       return;
     }
 
@@ -31,7 +31,7 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
       setError('');
     };
     reader.onerror = () => {
-      setError('Gagal membaca file gambar. ❌');
+      setError('Failed to read image file. ❌');
     };
     reader.readAsDataURL(file);
   };
@@ -45,57 +45,52 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
-    setIsLoading(true);
 
-    // Validate password reset if fields are filled
+    // Client-side validation for password reset (server re-verifies old password)
     if (newPassword || currentPassword) {
-      // Find current user password in localStorage
-      const registeredUsers = JSON.parse(localStorage.getItem('moneymind_users') || '[]');
-      const userIndex = registeredUsers.findIndex(u => u.email === userSession.email);
-      
-      const actualCurrentPassword = userIndex !== -1 ? registeredUsers[userIndex].password : 'demo123';
-
-      if (currentPassword !== actualCurrentPassword) {
-        setError('Password lama salah! 🔒');
-        setIsLoading(false);
+      if (!currentPassword) {
+        setError('Enter your old password. 🔒');
         return;
       }
-
       if (newPassword !== confirmPassword) {
-        setError('Password baru dan konfirmasi password tidak cocok! ❌');
-        setIsLoading(false);
+        setError('New password and confirm password do not match! ❌');
         return;
       }
-
       if (newPassword.length < 6) {
-        setError('Password baru minimal harus 6 karakter! 🔑');
-        setIsLoading(false);
+        setError('New password must be at least 6 characters! 🔑');
         return;
       }
     }
 
-    setTimeout(() => {
-      onSave({
-        username,
-        avatar,
-        password: newPassword || null
-      });
+    setIsLoading(true);
 
-      setSuccess('Profil berhasil diperbarui! ✨');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      
-      setTimeout(() => {
-        onClose();
-        setSuccess('');
-      }, 1000);
+    const result = await onSave({
+      username,
+      avatar,
+      currentPassword: currentPassword || null,
+      newPassword: newPassword || null,
+    });
+
+    if (!result || !result.ok) {
+      setError((result && result.error) || 'Failed to update profile.');
       setIsLoading(false);
-    }, 500);
+      return;
+    }
+
+    setSuccess('Profile updated successfully! ✨');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+
+    setTimeout(() => {
+      onClose();
+      setSuccess('');
+    }, 1000);
+    setIsLoading(false);
   };
 
   return (
@@ -152,7 +147,7 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
 
           {/* Edit Name */}
           <div className="form-group">
-            <label className="form-label">Nama Lengkap / Username</label>
+            <label className="form-label">Full Name / Username</label>
             <div className="relative">
               <input
                 type="text"
@@ -169,17 +164,17 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
 
           <hr className="border-slate-200 my-6" />
           
-          <h3 className="text-sm font-bold text-slate-700 mb-3">Reset Password (Opsional)</h3>
+          <h3 className="text-sm font-bold text-slate-700 mb-3">Reset Password (Optional)</h3>
 
           {/* Current Password */}
           <div className="form-group">
-            <label className="form-label">Password Lama</label>
+            <label className="form-label">Old Password</label>
             <div className="relative">
               <input
                 type="password"
                 className="form-input"
                 style={{ paddingLeft: '2.5rem' }}
-                placeholder="Ketik password lama Anda"
+                placeholder="Type your old password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 required={!!newPassword}
@@ -191,13 +186,13 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
           {/* New Password & Confirm */}
           <div className="flex gap-4">
             <div className="form-group flex-1">
-              <label className="form-label">Password Baru</label>
+              <label className="form-label">New Password</label>
               <div className="relative">
                 <input
                   type="password"
                   className="form-input"
                   style={{ paddingLeft: '2.5rem' }}
-                  placeholder="Min. 6 karakter"
+                  placeholder="Min. 6 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
@@ -205,13 +200,13 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
               </div>
             </div>
             <div className="form-group flex-1">
-              <label className="form-label">Konfirmasi</label>
+              <label className="form-label">Confirm</label>
               <div className="relative">
                 <input
                   type="password"
                   className="form-input"
                   style={{ paddingLeft: '2.5rem' }}
-                  placeholder="Ketik ulang password"
+                  placeholder="Retype password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required={!!newPassword}
@@ -224,10 +219,10 @@ export default function UserProfileModal({ isOpen, onClose, userSession, onSave 
           {/* Form Actions */}
           <div className="flex gap-3 mt-8">
             <button type="button" onClick={onClose} className="btn-secondary" disabled={isLoading}>
-              Batal
+              Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={isLoading}>
-              {isLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
+              {isLoading ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>

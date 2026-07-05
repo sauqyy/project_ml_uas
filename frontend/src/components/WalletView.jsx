@@ -67,7 +67,7 @@ export default function WalletView({ incomes, expenses, onOpenAddIncome, onDelet
                 </button>
 
                 {/* Sub Metrics */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-4">
                     <div className="card p-4">
                         <div className="flex items-center gap-2 text-muted mb-2 text-sm">
                             <ArrowUpRight size={16} className="text-emerald-500" />
@@ -139,6 +139,7 @@ export default function WalletView({ incomes, expenses, onOpenAddIncome, onDelet
                             <Tooltip
                                 cursor={{ fill: '#f1f5f9' }}
                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                formatter={(value) => [`${currencySymbol}${Number(value).toLocaleString('en-US')}`, 'amount']}
                             />
                             <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
                                 {chartData.map((entry, index) => (

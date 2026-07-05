@@ -1,279 +1,569 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Sparkles, Sliders } from 'lucide-react';
+import {
+    ResponsiveContainer, AreaChart, Area,
+    XAxis, YAxis, CartesianGrid, Tooltip
+} from 'recharts';
+import {
+    Sparkles, Wallet, AlertTriangle, CheckCircle2,
+    TrendingUp, TrendingDown, CalendarDays, Database, Download, Activity, ArrowRightLeft
+} from 'lucide-react';
+import { ExpensesByCategory } from './Charts';
 
-export default function PredictionView({ expenses = [], incomes = [], currencySymbol = '$' }) {
-    // 1. Simulation States
-    const [expenseSavingsPercent, setExpenseSavingsPercent] = useState(0); // 0% to 50%
-    const [incomeIncreasePercent, setIncomeIncreasePercent] = useState(0);   // 0% to 50%
+export default function PredictionView({ expenses = [], incomes = [], currencySymbol = 'Rp', categoryColors = {} }) {
 
-    // 2. ARIMA Forecast State
-    const [arimaForecast, setArimaForecast] = useState([]);
+    // 2. Prophet Forecast + Budget Monitor State
+    const [prophetForecast, setProphetForecast] = useState([]);
+    const [prophetActuals, setProphetActuals] = useState([]);
+    const [forecastMeta, setForecastMeta] = useState(null);
+    const [forecastStatus, setForecastStatus] = useState(null);
     const [loadingForecast, setLoadingForecast] = useState(false);
+    const [budget, setBudget] = useState(null);
+    const [importing, setImporting] = useState(false);
+
+    const userEmail = (() => {
+        const s = JSON.parse(localStorage.getItem('moneymind_session') || '{}');
+        return s.email || 'demo@moneymind.com';
+    })();
 
     useEffect(() => {
         setLoadingForecast(true);
-        fetch('/api/forecast')
-            .then(res => {
-                if (!res.ok) throw new Error("Failed to fetch forecast");
-                return res.json();
+        const headers = { 'X-User-Email': userEmail };
+
+        fetch('/api/forecast?days=14', { headers })
+            .then(res => res.json())
+            .then(data => {
+                setForecastStatus(data.status);
+                setProphetForecast(Array.isArray(data.forecast) ? data.forecast : []);
+                setProphetActuals(Array.isArray(data.actuals) ? data.actuals : []);
+                setForecastMeta(data.meta || (data.status === 'belum_siap' ? data : null));
             })
-            .then(data => setArimaForecast(data))
             .catch(err => console.error("Error fetching forecast:", err))
             .finally(() => setLoadingForecast(false));
+
+        fetch('/api/budget-status?savings_percent=20&days=30', { headers })
+            .then(res => res.json())
+            .then(data => setBudget(data))
+            .catch(err => console.error("Error fetching budget:", err));
     }, [expenses]);
 
-    // 3. Base Averages from Real User Data (Fall back to mock values if empty)
-    const baseMonthlySpend = useMemo(() => {
-        if (expenses.length === 0) return 1200; // Mock fallback
-        return expenses.reduce((sum, item) => sum + item.amount, 0) || 1200;
+    const fmtNum = (n) => `${currencySymbol}${Math.round(Number(n) || 0).toLocaleString('id-ID')}`;
+    const fmtShort = (v) => {
+        if (v >= 1000000) return `${currencySymbol}${(v / 1000000).toLocaleString('id-ID', { maximumFractionDigits: 1 })}M`;
+        if (v >= 1000) return `${currencySymbol}${Math.round(v / 1000)}k`;
+        return `${currencySymbol}${Math.round(v)}`;
+    };
+
+    const handleImport = () => {
+        setImporting(true);
+        fetch('/api/import-dataset?replace=true', {
+            method: 'POST',
+            headers: { 'X-User-Email': userEmail },
+        })
+            .then(res => res.json())
+            .then(() => window.location.reload())
+            .catch(err => { console.error("Import failed:", err); setImporting(false); });
+    };
+
+    // Prophet-derived summary
+    const total14 = useMemo(
+        () => prophetForecast.reduce((s, f) => s + (f.predicted_expense || 0), 0),
+        [prophetForecast]
+    );
+    const avgDaily = prophetForecast.length ? total14 / prophetForecast.length : 0;
+
+    const forecastChartData = useMemo(() => {
+        const list = [];
+
+        // Add actual historical daily spend (Emerald)
+        prophetActuals.forEach(item => {
+            list.push({
+                dateStr: item.date,
+                name: new Date(item.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                actual: Math.round(item.actual_expense || 0),
+                predicted: null
+            });
+        });
+
+        // Bridge/connect the last actual point to the first forecast point
+        if (prophetActuals.length > 0 && prophetForecast.length > 0) {
+            const lastActual = prophetActuals[prophetActuals.length - 1];
+            list[list.length - 1].predicted = Math.round(lastActual.actual_expense || 0);
+        }
+
+        // Add forecast future daily spend (Indigo)
+        prophetForecast.forEach(item => {
+            list.push({
+                dateStr: item.date,
+                name: new Date(item.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                actual: null,
+                predicted: Math.round(item.predicted_expense || 0)
+            });
+        });
+
+        return list;
+    }, [prophetActuals, prophetForecast]);
+
+    const budgetPct = useMemo(() => {
+        if (!budget || !budget.max_pengeluaran_aman) return 0;
+        return Math.min(100, (budget.actual_so_far_bulan_ini / budget.max_pengeluaran_aman) * 100);
+    }, [budget]);
+    const budgetAman = budget && !budget.error &&
+        budget.actual_so_far_bulan_ini <= budget.max_pengeluaran_aman;
+
+    // Perbandingan pengeluaran bulan ini vs bulan lalu (dari transaksi user)
+    const monthlyComparison = useMemo(() => {
+        const byMonth = {};
+        expenses.forEach(e => {
+            const ym = (e.date || '').slice(0, 7); // YYYY-MM
+            if (!ym || ym.length < 7) return;
+            byMonth[ym] = (byMonth[ym] || 0) + e.amount;
+        });
+        const months = Object.keys(byMonth).sort();
+        if (months.length === 0) return null;
+        const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const label = (ym) => `${MONTHS[parseInt(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+        const thisYM = months[months.length - 1];
+        const lastYM = months.length > 1 ? months[months.length - 2] : null;
+        const thisVal = byMonth[thisYM];
+        const lastVal = lastYM ? byMonth[lastYM] : 0;
+        const diff = thisVal - lastVal;
+        const pct = lastVal > 0 ? (diff / lastVal) * 100 : null;
+        return {
+            thisLabel: label(thisYM),
+            lastLabel: lastYM ? label(lastYM) : null,
+            thisVal, lastVal, diff, pct,
+            max: Math.max(thisVal, lastVal, 1),
+        };
     }, [expenses]);
 
-    const baseMonthlyIncome = useMemo(() => {
-        if (incomes.length === 0) return 5000; // Mock fallback
-        return incomes.reduce((sum, item) => sum + item.amount, 0) || 5000;
-    }, [incomes]);
+    // Calculate remaining monthly cash (surplus history) over the last 5 months
+    const surplusHistory = useMemo(() => {
+        const incomeByMonth = {};
+        incomes.forEach(i => {
+            const ym = (i.date || '').slice(0, 7); // YYYY-MM
+            if (!ym || ym.length < 7) return;
+            incomeByMonth[ym] = (incomeByMonth[ym] || 0) + i.amount;
+        });
 
-    // 4. Dynamic Calculation for the next 4 months
-    const forecastData = useMemo(() => {
-        const months = ['Juni', 'Juli', 'Agustus', 'September'];
-        
-        // Base growth rates (inflation/trend factors)
-        const spendTrendMultiplier = [1.0, 1.05, 1.09, 1.14]; // Projected spending trend (increasing without cuts)
-        const incomeTrendMultiplier = [1.0, 1.0, 1.02, 1.02];  // Projected income trend
-        
-        return months.map((month, idx) => {
-            // Apply simulation factors
-            const simulatedSpendReduction = 1 - (expenseSavingsPercent / 100);
-            const simulatedIncomeIncrease = 1 + (incomeIncreasePercent / 100);
+        const expenseByMonth = {};
+        expenses.forEach(e => {
+            const ym = (e.date || '').slice(0, 7); // YYYY-MM
+            if (!ym || ym.length < 7) return;
+            expenseByMonth[ym] = (expenseByMonth[ym] || 0) + e.amount;
+        });
 
-            const baseSpend = baseMonthlySpend * spendTrendMultiplier[idx];
-            const baseIncome = baseMonthlyIncome * incomeTrendMultiplier[idx];
+        // Collect all months that have either incomes or expenses
+        const allMonthsSet = new Set([
+            ...Object.keys(incomeByMonth),
+            ...Object.keys(expenseByMonth)
+        ]);
 
-            const predictedSpend = Math.round(baseSpend * simulatedSpendReduction);
-            const predictedIncome = Math.round(baseIncome * simulatedIncomeIncrease);
-            const predictedSavings = Math.max(0, predictedIncome - predictedSpend);
+        // Always ensure the current month is included
+        const now = new Date();
+        const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        allMonthsSet.add(currentYM);
 
+        const sortedMonths = Array.from(allMonthsSet).sort();
+        // Take the last 5 months
+        const last5Months = sortedMonths.slice(-5);
+
+        const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const label = (ym) => `${MONTHS[parseInt(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+
+        const data = last5Months.map(ym => {
+            const inc = incomeByMonth[ym] || 0;
+            const exp = expenseByMonth[ym] || 0;
+            const surplus = inc - exp;
             return {
-                name: month,
-                'Estimasi Pendapatan': predictedIncome,
-                'Estimasi Pengeluaran': predictedSpend,
-                'Estimasi Tabungan': predictedSavings
+                ym,
+                label: label(ym),
+                income: inc,
+                expense: exp,
+                surplus,
+                isCurrent: ym === currentYM
             };
         });
-    }, [baseMonthlySpend, baseMonthlyIncome, expenseSavingsPercent, incomeIncreasePercent]);
 
-    // 5. Summaries and Badging logic based on simulation
-    const currentForecastSpend = forecastData[1]['Estimasi Pengeluaran']; // July forecast
-    const currentForecastIncome = forecastData[1]['Estimasi Pendapatan']; // July forecast
-    
-    // Determine overall trend badge
-    const trendType = useMemo(() => {
-        const initialSpend = baseMonthlySpend;
-        const finalForecastSpend = forecastData[3]['Estimasi Pengeluaran'];
-        
-        if (finalForecastSpend > initialSpend * 1.05) {
-            return {
-                label: 'Tren Pengeluaran: Meningkat 📈',
-                class: 'increasing',
-                desc: 'Pengeluaran bulanan Anda diproyeksikan tumbuh karena inflasi dan kebiasaan belanja belakangan ini. Disarankan melakukan simulasi penghematan di bawah.'
-            };
-        } else if (finalForecastSpend < initialSpend * 0.95) {
-            return {
-                label: 'Tren Pengeluaran: Menurun 📉',
-                class: 'decreasing',
-                desc: 'Luar biasa! Simulasi penghematan Anda efektif memotong tren kenaikan belanja di masa depan.'
-            };
-        } else {
-            return {
-                label: 'Tren Pengeluaran: Stabil ➡️',
-                class: 'stable',
-                desc: 'Arus kas dan pengeluaran Anda diproyeksikan konstan dan stabil selama 4 bulan ke depan.'
-            };
+        const maxAbs = Math.max(...data.map(d => Math.abs(d.surplus)), 1);
+
+        return {
+            data,
+            maxAbs
+        };
+    }, [expenses, incomes]);
+
+    const isColdStart = forecastStatus === 'belum_siap';
+
+    // --- Data untuk state "sedang mengumpulkan data" (cold-start) ---
+    const daysCollected = forecastMeta?.hari_terkumpul ?? 0;
+    const daysNeeded = forecastMeta?.hari_dibutuhkan ?? 21;
+    const daysLeft = Math.max(0, daysNeeded - daysCollected);
+    const ringRadius = 26;
+    const ringCirc = 2 * Math.PI * ringRadius;
+    const ringPct = daysNeeded ? Math.min(1, daysCollected / daysNeeded) : 0;
+    const ringOffset = ringCirc * (1 - ringPct);
+
+    // Helper to translate budget status messages
+    const translateBudgetMsg = (msg) => {
+        if (!msg) return '';
+        let m = msg.toLowerCase();
+        if (m.includes('aman') || m.includes('di bawah')) {
+            return `Budget safe! Monthly spend is within maximum limits.`;
         }
-    }, [baseMonthlySpend, forecastData]);
+        if (m.includes('melebihi') || m.includes('overspend')) {
+            return `Budget warning! Monthly spend exceeds limit.`;
+        }
+        return msg;
+    };
 
     return (
         <div className="flex flex-col gap-6">
-            
-            {/* Top Banner: AI Trend Summary */}
-            <div className="card prediction-banner">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-indigo-50 p-2.5 rounded-xl border border-indigo-100 flex items-center justify-center">
-                            <Sparkles size={22} className="text-indigo-600" style={{ color: 'var(--primary)' }} />
+
+            {/* Cold-start: Data collection progress banner */}
+            {isColdStart && (
+                <div className="coldstart-progress-banner">
+                    <div className="coldstart-progress-left">
+                        {/* Circular Progress Ring */}
+                        <div className="coldstart-ring-wrapper">
+                            <svg width="64" height="64" viewBox="0 0 64 64">
+                                <circle cx="32" cy="32" r={ringRadius} fill="none" stroke="#e8e0f3" strokeWidth="5" />
+                                <circle
+                                    cx="32" cy="32" r={ringRadius} fill="none"
+                                    stroke="url(#coldstartGrad)" strokeWidth="5"
+                                    strokeLinecap="round"
+                                    strokeDasharray={ringCirc}
+                                    strokeDashoffset={ringOffset}
+                                    style={{ transform: 'rotate(-90deg)', transformOrigin: 'center', transition: 'stroke-dashoffset 0.6s ease' }}
+                                />
+                                <defs>
+                                    <linearGradient id="coldstartGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stopColor="#8b5cf6" />
+                                        <stop offset="100%" stopColor="#6366f1" />
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                            <span className="coldstart-ring-text">
+                                <strong>{daysCollected}</strong>/{daysNeeded}
+                            </span>
                         </div>
-                        <div>
-                            <h2 className="text-lg font-bold text-primary">AI Prediksi Keuangan & Arus Kas</h2>
-                            <p className="text-xs text-muted">Proyeksi pertumbuhan finansial cerdas berdasarkan data historis Anda</p>
+                        <div className="coldstart-info">
+                            <h3 className="coldstart-title">Collecting your transaction history</h3>
+                            <p className="coldstart-desc">
+                                Spending forecasts & active budget alerts will unlock in **{daysLeft} days**.
+                                We need enough data to build accurate projections instead of guesses.
+                            </p>
                         </div>
                     </div>
-                    
-                    <span className={`trend-badge ${trendType.class}`}>
-                        {trendType.label}
-                    </span>
+                    <div className="coldstart-actions">
+                        <button
+                            onClick={() => {
+                                document.getElementById('ml-features-container')?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="coldstart-import-btn"
+                        >
+                            View preview
+                        </button>
+                    </div>
                 </div>
-                
-                <hr className="border-slate-200" style={{ margin: '0.25rem 0' }} />
-                
-                <p className="text-sm text-slate-600 leading-relaxed">
-                    {trendType.desc}
-                </p>
-            </div>
+            )}
 
-            {/* Main Content Grid */}
-            <div className="prediction-grid">
-                
-                {/* Left Column: Interactive Simulation Control & ARIMA Forecast */}
-                <div className="flex flex-col gap-6">
-                    <div className="simulation-panel">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Sliders size={18} className="text-slate-500" />
-                            <h3 className="font-bold text-md text-primary">Panel Simulasi Finansial</h3>
-                        </div>
-
-                        <p className="text-xs text-muted leading-relaxed">
-                            Geser parameter di bawah untuk melihat bagaimana keputusan finansial hari ini memengaruhi saldo masa depan Anda.
-                        </p>
-
-                        <div className="flex flex-col gap-5 mt-2">
-                            {/* Slider 1: Expenses Cut */}
-                            <div className="slider-group">
-                                <div className="slider-header">
-                                    <span>Simulasi Hemat Belanja</span>
-                                    <span className="slider-value">{expenseSavingsPercent}%</span>
-                                </div>
-                                <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="50" 
-                                    value={expenseSavingsPercent}
-                                    onChange={(e) => setExpenseSavingsPercent(Number(e.target.value))}
-                                    className="slider-input"
-                                />
-                                <span className="text-[10px] text-muted">Mengurangi pengeluaran bulanan tidak wajib.</span>
-                            </div>
-
-                            {/* Slider 2: Income Growth */}
-                            <div className="slider-group">
-                                <div className="slider-header">
-                                    <span>Simulasi Naik Pendapatan</span>
-                                    <span className="slider-value">+{incomeIncreasePercent}%</span>
-                                </div>
-                                <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="50" 
-                                    value={incomeIncreasePercent}
-                                    onChange={(e) => setIncomeIncreasePercent(Number(e.target.value))}
-                                    className="slider-input"
-                                />
-                                <span className="text-[10px] text-muted">Estimasi kenaikan gaji, bonus, atau investasi.</span>
-                            </div>
-                        </div>
-
-                        <hr className="border-slate-200 my-2" />
-
-                        {/* Simulation Metrics */}
-                        <div className="flex flex-col gap-3">
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="text-slate-500">Estimasi Belanja (Juli):</span>
-                                <span className="font-bold text-slate-700">{currencySymbol}{currentForecastSpend.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="text-slate-500">Estimasi Pendapatan (Juli):</span>
-                                <span className="font-bold text-slate-700">{currencySymbol}{currentForecastIncome.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs p-2 rounded-lg bg-indigo-50 border border-indigo-100">
-                                <span className="text-indigo-600 font-semibold">Proyeksi Tabungan Bulanan:</span>
-                                <span className="font-bold text-indigo-700">{currencySymbol}{(currentForecastIncome - currentForecastSpend).toLocaleString()}</span>
-                            </div>
+            {/* Feature Cards — greyed out when cold-start */}
+            <div className={isColdStart ? 'coldstart-locked-wrapper' : ''} id="ml-features-container">
+                {isColdStart && (
+                    <div className="coldstart-locked-overlay">
+                        <div className="coldstart-locked-badge">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                            <span>Collect <strong>{daysLeft}</strong> more days of data to unlock AI features</span>
                         </div>
                     </div>
+                )}
 
-                    {/* ARIMA Forecast Card */}
-                    <div className="card flex flex-col gap-3" style={{ border: '1px solid rgba(99, 102, 241, 0.2)', background: 'linear-gradient(180deg, #ffffff 0%, rgba(99, 102, 241, 0.02) 100%)' }}>
-                        <div className="flex items-center gap-2">
-                            <Sparkles size={18} className="text-indigo-600" />
-                            <h3 className="font-bold text-md text-primary">ARIMA 5-Day Forecast</h3>
-                        </div>
-                        <p className="text-xs text-muted leading-relaxed">
-                            Model AI ARIMA(1,1,1) menganalisis tren runtun waktu pengeluaran harian Anda untuk memproyeksikan estimasi pengeluaran 5 hari ke depan.
-                        </p>
-                        {loadingForecast ? (
-                            <p className="text-xs text-muted">Calculating forecast...</p>
-                        ) : arimaForecast.length === 0 ? (
-                            <p className="text-xs text-muted">Belum ada data ramalan. Silakan upload berkas riwayat transaksi CSV di Settings.</p>
-                        ) : (
-                            <div className="flex flex-col gap-2 mt-2">
-                                {arimaForecast.map((f, idx) => (
-                                    <div key={idx} className="flex justify-between items-center text-xs p-2 rounded-lg bg-white border border-slate-200 shadow-sm">
-                                        <span className="text-slate-600 font-semibold">{new Date(f.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
-                                        <span className="font-bold text-indigo-700">{currencySymbol}{f.amount.toLocaleString('id-ID')}</span>
+                {!isColdStart ? (
+                    <>
+                        {/* Stat cards */}
+                        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                            <div className="card flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-500"><TrendingUp size={20} /></div>
+                                <div>
+                                    <p className="text-[11px] text-muted uppercase font-bold tracking-wide">14-Day Estimate</p>
+                                    <p className="text-lg font-bold text-slate-800">{fmtNum(total14)}</p>
+                                </div>
+                            </div>
+                            <div className="card flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600"><CalendarDays size={20} /></div>
+                                <div>
+                                    <p className="text-[11px] text-muted uppercase font-bold tracking-wide">Daily Average</p>
+                                    <p className="text-lg font-bold text-slate-800">{fmtNum(avgDaily)}</p>
+                                </div>
+                            </div>
+                            {(() => {
+                                const catTotals = expenses.reduce((acc, e) => {
+                                    const cat = e.category || 'Other';
+                                    acc[cat] = (acc[cat] || 0) + (e.amount || 0);
+                                    return acc;
+                                }, {});
+                                const topCat = Object.entries(catTotals).sort((a, b) => b[1] - a[1])[0];
+                                return (
+                                    <div className="card flex items-center gap-3">
+                                        <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600"><Activity size={20} /></div>
+                                        <div>
+                                            <p className="text-[11px] text-muted uppercase font-bold tracking-wide">Most Spent Category</p>
+                                            <p className="text-sm font-bold text-slate-800">{topCat ? topCat[0] : '—'}</p>
+                                            <p className="text-[10px] text-slate-400">{topCat ? fmtNum(topCat[1]) : 'No data'}</p>
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
+                                );
+                            })()}
+                        </div>
 
-                {/* Right Column: Chart & AI Insights */}
-                <div className="flex flex-col gap-6">
-                    
-                    {/* Forecast Chart Card */}
-                    <div className="card flex flex-col gap-4" style={{ minHeight: '380px' }}>
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div>
-                                <h3 className="font-bold text-md text-primary">Grafik Proyeksi Finansial (4 Bulan Depan)</h3>
-                                <p className="text-xs text-muted">Menunjukkan kurva pendapatan, pengeluaran, dan tabungan Anda</p>
+                        {/* Forecast chart + Budget monitor */}
+                        <div className="prediction-grid" style={{ marginTop: '1.5rem' }}>
+                            {/* Prophet Forecast Area Chart */}
+                            <div className="card flex flex-col gap-3">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles size={18} className="text-indigo-600" />
+                                    <h3 className="font-bold text-md text-primary">Daily Expense Projections (14 Days)</h3>
+                                </div>
+                                {loadingForecast ? (
+                                    <p className="text-xs text-muted">Calculating Prophet forecast...</p>
+                                ) : forecastChartData.length === 0 ? (
+                                    <p className="text-xs text-muted">No forecast data available yet.</p>
+                                ) : (
+                                    <div style={{ width: '100%', height: '330px' }}>
+                                        <ResponsiveContainer width="100%" height={280}>
+                                            <AreaChart data={forecastChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35} />
+                                                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0.02} />
+                                                    </linearGradient>
+                                                    <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                                <XAxis dataKey="name" fontSize={10} stroke="#94a3b8" tickLine={false} />
+                                                <YAxis fontSize={10} stroke="#94a3b8" tickLine={false} tickFormatter={fmtShort} width={55} />
+                                                <Tooltip
+                                                    formatter={(value, name) => [fmtNum(value), name]}
+                                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
+                                                />
+                                                <Area type="monotone" dataKey="actual" name="Actual (History)" stroke="#10b981" strokeWidth={2.5} fill="url(#actualFill)" dot={{ r: 2 }} activeDot={{ r: 5 }} connectNulls={false} />
+                                                <Area type="monotone" dataKey="predicted" name="Projection (Prophet)" stroke="#6366f1" strokeWidth={2.5} fill="url(#forecastFill)" dot={{ r: 2 }} activeDot={{ r: 5 }} connectNulls={false} />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                        <div className="flex justify-center gap-6 text-xs mt-3 bg-slate-50 py-2 rounded-lg">
+                                            <div className="flex items-center gap-2">
+                                                <div style={{ width: '12px', height: '12px', backgroundColor: '#10b981', borderRadius: '3px' }} className="shrink-0" />
+                                                <span className="text-slate-600 font-semibold">Actual (Spending History)</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div style={{ width: '12px', height: '12px', backgroundColor: '#6366f1', borderRadius: '3px' }} className="shrink-0" />
+                                                <span className="text-slate-600 font-semibold">Projection (Prophet Forecast)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                <p className="text-[10px] text-slate-400 leading-relaxed">
+                                    The Prophet model analyzes weekly seasonality & historical spending trends to project the next 14 days.
+                                </p>
+                            </div>
+
+                            {/* Monthly Remaining Cash (Last 5 Months) */}
+                            <div className="card flex flex-col gap-4">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Wallet size={18} className="text-emerald-600" />
+                                        <h3 className="font-bold text-md text-primary">Monthly Remaining Cash (Last 5 Months)</h3>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-1 ml-7">
+                                        Track your remaining cash (Income - Expenses) to see if you are improving your savings over time.
+                                    </p>
+                                </div>
+                                
+                                <div className="flex flex-col gap-4 mt-1">
+                                    {surplusHistory.data.map((item) => {
+                                        const percentage = surplusHistory.maxAbs > 0 ? (Math.abs(item.surplus) / surplusHistory.maxAbs) * 100 : 0;
+                                        const isPositive = item.surplus >= 0;
+                                        return (
+                                            <div key={item.ym} className="flex flex-col gap-1.5">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className={`${item.isCurrent ? 'text-indigo-600 font-bold' : 'text-slate-400 font-medium'}`}>
+                                                        {item.label} {item.isCurrent && '(This Month)'}
+                                                    </span>
+                                                    <span className={`font-semibold ${isPositive ? 'text-slate-800' : 'text-rose-600'}`}>
+                                                        {isPositive ? '+' : '-'}{fmtNum(Math.abs(item.surplus))}
+                                                    </span>
+                                                </div>
+                                                <div style={{ height: '10px', borderRadius: '9999px', background: '#f1f5f9', overflow: 'hidden' }}>
+                                                    <div style={{
+                                                        height: '100%',
+                                                        width: `${percentage}%`,
+                                                        borderRadius: '9999px',
+                                                        background: isPositive 
+                                                            ? 'linear-gradient(90deg,#34d399,#10b981)' 
+                                                            : 'linear-gradient(90deg,#fb7185,#e11d48)',
+                                                        transition: 'width 0.4s ease'
+                                                    }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        {/* Preview stat cards (placeholder data for greyed-out state) */}
+                        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                            <div className="card flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-500"><TrendingUp size={20} /></div>
+                                <div>
+                                    <p className="text-[11px] text-muted uppercase font-bold tracking-wide">14-Day Estimate</p>
+                                    <p className="text-lg font-bold text-slate-800">—</p>
+                                </div>
+                            </div>
+                            <div className="card flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600"><CalendarDays size={20} /></div>
+                                <div>
+                                    <p className="text-[11px] text-muted uppercase font-bold tracking-wide">Daily Average</p>
+                                    <p className="text-lg font-bold text-slate-800">—</p>
+                                </div>
+                            </div>
+                            <div className="card flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600"><Activity size={20} /></div>
+                                <div>
+                                    <p className="text-[11px] text-muted uppercase font-bold tracking-wide">Most Spent Category</p>
+                                    <p className="text-sm font-bold text-slate-800">—</p>
+                                    <p className="text-[10px] text-slate-400">No data</p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="flex-1 w-full" style={{ minHeight: '260px' }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={forecastData}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={true} stroke="#e2e8f0" />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                                    <Tooltip
-                                        contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
-                                    />
-                                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 500 }} />
-                                    
-                                    <Line
-                                        type="monotone"
-                                        dataKey="Estimasi Pendapatan"
-                                        stroke="#10b981" // Emerald / Success
-                                        strokeWidth={2.5}
-                                        dot={{ r: 4, fill: '#10b981', strokeWidth: 1.5, stroke: '#fff' }}
-                                        activeDot={{ r: 6 }}
-                                    />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="Estimasi Pengeluaran"
-                                        stroke="#ef4444" // Red / Danger
-                                        strokeWidth={2.5}
-                                        dot={{ r: 4, fill: '#ef4444', strokeWidth: 1.5, stroke: '#fff' }}
-                                        activeDot={{ r: 6 }}
-                                    />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="Estimasi Tabungan"
-                                        stroke="#6366f1" // Indigo / Primary
-                                        strokeWidth={2.5}
-                                        strokeDasharray="4 4"
-                                        dot={{ r: 4, fill: '#6366f1', strokeWidth: 1.5, stroke: '#fff' }}
-                                        activeDot={{ r: 6 }}
-                                    />
-                                </LineChart>
-                            </ResponsiveContainer>
+                        {/* Preview forecast + budget (placeholder) */}
+                        <div className="prediction-grid" style={{ marginTop: '1.5rem' }}>
+                            <div className="card flex flex-col gap-3">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles size={18} className="text-indigo-600" />
+                                    <h3 className="font-bold text-md text-primary">Daily Expense Projections (14 Days)</h3>
+                                </div>
+                                <div style={{ width: '100%', height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <p className="text-sm text-muted">Data not available yet</p>
+                                </div>
+                            </div>
+                            {/* Monthly Remaining Cash (Last 5 Months) */}
+                            <div className="card flex flex-col gap-4">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Wallet size={18} className="text-emerald-600" />
+                                        <h3 className="font-bold text-md text-primary">Monthly Remaining Cash (Last 5 Months)</h3>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-1 ml-7">
+                                        Track your remaining cash (Income - Expenses) to see if you are improving your savings over time.
+                                    </p>
+                                </div>
+                                
+                                <div className="flex flex-col gap-4 mt-1">
+                                    {surplusHistory.data.map((item) => {
+                                        const percentage = surplusHistory.maxAbs > 0 ? (Math.abs(item.surplus) / surplusHistory.maxAbs) * 100 : 0;
+                                        const isPositive = item.surplus >= 0;
+                                        return (
+                                            <div key={item.ym} className="flex flex-col gap-1.5">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className={`${item.isCurrent ? 'text-indigo-600 font-bold' : 'text-slate-400 font-medium'}`}>
+                                                        {item.label} {item.isCurrent && '(This Month)'}
+                                                    </span>
+                                                    <span className={`font-semibold ${isPositive ? 'text-slate-800' : 'text-rose-600'}`}>
+                                                        {isPositive ? '+' : '-'}{fmtNum(Math.abs(item.surplus))}
+                                                    </span>
+                                                </div>
+                                                <div style={{ height: '10px', borderRadius: '9999px', background: '#f1f5f9', overflow: 'hidden' }}>
+                                                    <div style={{
+                                                        height: '100%',
+                                                        width: `${percentage}%`,
+                                                        borderRadius: '9999px',
+                                                        background: isPositive 
+                                                            ? 'linear-gradient(90deg,#34d399,#10b981)' 
+                                                            : 'linear-gradient(90deg,#fb7185,#e11d48)',
+                                                        transition: 'width 0.4s ease'
+                                                    }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
-                    </div>
-
-                </div>
-
+                    </>
+                )}
             </div>
 
+            {/* Expenses by Category + Monthly Comparison */}
+            <div className="prediction-grid" style={{ marginTop: '1.5rem' }}>
+                {/* Expenses by Category */}
+                <div style={{ height: '360px' }}>
+                    <ExpensesByCategory expenses={expenses} categoryColors={categoryColors} />
+                </div>
+
+                {/* Monthly Comparison */}
+                <div className="card flex flex-col gap-4">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <ArrowRightLeft size={18} className="text-indigo-500" />
+                            <h3 className="font-bold text-md text-primary">Monthly Comparison (This Month vs. Last Month)</h3>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1 ml-7">Compare your total expenses between the current and previous month. A positive value means you saved more this month.</p>
+                    </div>
+                    {!monthlyComparison ? (
+                        <p className="text-xs text-muted">No expense data available.</p>
+                    ) : (
+                        <div className="flex flex-col gap-4 mt-1">
+                            {monthlyComparison.lastLabel && (
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-slate-400 font-medium">{monthlyComparison.lastLabel}</span>
+                                        <span className="text-slate-400 font-semibold">{fmtNum(monthlyComparison.lastVal)}</span>
+                                    </div>
+                                    <div style={{ height: '10px', borderRadius: '9999px', background: '#f1f5f9', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${(monthlyComparison.lastVal / monthlyComparison.max) * 100}%`, borderRadius: '9999px', background: '#cbd5e1' }} />
+                                    </div>
+                                </div>
+                            )}
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-indigo-600 font-bold">{monthlyComparison.thisLabel}</span>
+                                    <span className="text-slate-800 font-bold">{fmtNum(monthlyComparison.thisVal)}</span>
+                                </div>
+                                <div style={{ height: '10px', borderRadius: '9999px', background: '#f1f5f9', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${(monthlyComparison.thisVal / monthlyComparison.max) * 100}%`, borderRadius: '9999px', background: 'linear-gradient(90deg,#6366f1,#4f46e5)' }} />
+                                </div>
+                            </div>
+                            {monthlyComparison.lastLabel ? (() => {
+                                // Savings = lastVal - thisVal (positive = you spent less = good)
+                                const savings = monthlyComparison.lastVal - monthlyComparison.thisVal;
+                                const savingsPct = monthlyComparison.lastVal > 0 ? (savings / monthlyComparison.lastVal) * 100 : null;
+                                return (
+                                    <div className="flex justify-between items-center pt-3 border-t border-slate-100 text-sm">
+                                        <span className="text-slate-500 font-medium">Difference</span>
+                                        <span className={`font-bold flex items-center gap-1 ${savings >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                            {savings >= 0 ? <TrendingDown size={15} /> : <TrendingUp size={15} />}
+                                            {savings >= 0 ? '+' : '-'}{fmtNum(Math.abs(savings))}
+                                            {savingsPct !== null && ` (${Math.abs(savingsPct).toFixed(0)}%)`}
+                                        </span>
+                                    </div>
+                                );
+                            })() : (
+                                <p className="text-[11px] text-slate-400 pt-1">No comparison data available — new data from only one month.</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

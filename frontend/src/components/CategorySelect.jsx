@@ -59,7 +59,7 @@ export default function CategorySelect({ value, onChange, categories, onAddCateg
 
     const handleDelete = async (e, cat) => {
         e.stopPropagation(); // Prevent selecting the category when clicking delete
-        const confirmDelete = window.confirm(`Apakah Anda yakin ingin menghapus kategori "${cat}"?\n\nCatatan: Pengeluaran yang sudah menggunakan kategori ini tidak akan terhapus, tetapi kategorinya akan berubah.`);
+        const confirmDelete = window.confirm(`Are you sure you want to delete category "${cat}"?\n\nNote: Expenses already using this category will not be deleted, but their category will be reset.`);
         if (confirmDelete) {
             try {
                 await onDeleteCategory(cat);
@@ -67,7 +67,7 @@ export default function CategorySelect({ value, onChange, categories, onAddCateg
                     onChange(categories.filter(c => c !== cat)[0] || '');
                 }
             } catch (err) {
-                alert("Gagal menghapus kategori: " + err.message);
+                alert("Failed to delete category: " + err.message);
             }
         }
     };
@@ -78,7 +78,7 @@ export default function CategorySelect({ value, onChange, categories, onAddCateg
                 <input
                     type="text"
                     className="form-input"
-                    placeholder="Ketik kategori..."
+                    placeholder="Type category..."
                     value={inputValue}
                     onChange={(e) => {
                         setInputValue(e.target.value);
@@ -94,7 +94,7 @@ export default function CategorySelect({ value, onChange, categories, onAddCateg
                 <div className="category-dropdown-list">
                     {filteredCategories.length === 0 ? (
                         <div className="px-3 py-2 text-xs text-slate-400 text-center">
-                            Tekan Enter untuk menambah "{inputValue}"
+                            Press Enter to add "{inputValue}"
                         </div>
                     ) : (
                         filteredCategories.map((cat) => (
@@ -107,7 +107,7 @@ export default function CategorySelect({ value, onChange, categories, onAddCateg
                                     type="button"
                                     onClick={(e) => handleDelete(e, cat)}
                                     className="category-delete-btn"
-                                    title="Hapus kategori"
+                                    title="Delete category"
                                 >
                                     <Trash2 size={14} />
                                 </button>

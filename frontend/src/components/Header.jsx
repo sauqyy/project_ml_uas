@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Wallet, LayoutDashboard, Calendar, Settings, CreditCard, TrendingUp, LogOut, Sparkles, ChevronDown, User, Send, Check } from 'lucide-react';
+import { Wallet, LayoutDashboard, Calendar, Settings, CreditCard, TrendingUp, LogOut, Sparkles, ChevronDown, User, Send, Check, Coins } from 'lucide-react';
 import UserProfileModal from './UserProfileModal';
 import TelegramModal from './TelegramModal';
+import logoPng from '../assets/logo.png';
 
-export default function Header({ 
-  activeTab, 
-  setActiveTab, 
-  onOpenSettings, 
-  onLogout, 
-  isSecretUnlocked, 
-  userSession, 
+export default function Header({
+  activeTab,
+  setActiveTab,
+  onOpenSettings,
+  onLogout,
+  isSecretUnlocked,
+  userSession,
   onUpdateProfile,
   telegramStatus,
   onDisconnectTelegram,
@@ -42,9 +43,7 @@ export default function Header({
     <div className="flex flex-col gap-6 mb-8">
       <div className="flex items-center gap-3">
         {/* Brand Logo */}
-        <div className="bg-black text-white p-2 rounded-lg">
-          <Wallet size={24} />
-        </div>
+        <img src={logoPng} alt="Money Mind Logo" style={{ width: '64px', height: '64px', borderRadius: '8px' }} />
         <div className="flex-1">
           <h1 className="text-xl font-bold">Money Mind</h1>
           <p className="text-muted text-sm">Track your expenses and visualize your spending patterns</p>
@@ -52,7 +51,7 @@ export default function Header({
 
         {/* Telegram Connect Button (shows on dashboard ONLY when NOT connected) */}
         {telegramStatus && !telegramStatus.connected && (
-          <button 
+          <button
             onClick={() => setIsTelegramModalOpen(true)}
             className="btn-telegram-connect"
             style={{ marginRight: '0.5rem' }}
@@ -64,8 +63,8 @@ export default function Header({
 
         {/* Profile Menu Trigger (Top Right) */}
         <div className="profile-menu-container" ref={dropdownRef}>
-          <button 
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
+          <button
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="profile-trigger"
           >
             {userSession?.avatar ? (
@@ -88,23 +87,23 @@ export default function Header({
                 <div className="profile-dropdown-name">{userSession?.name || 'User'}</div>
                 <div className="profile-dropdown-email">{userSession?.email || 'user@moneymind.com'}</div>
               </div>
-              
-              <button 
+
+              <button
                 onClick={() => {
                   setIsProfileModalOpen(true);
                   setIsDropdownOpen(false);
-                }} 
+                }}
                 className="profile-dropdown-item"
               >
                 <User size={16} />
                 Edit Profile
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => {
                   onOpenSettings();
                   setIsDropdownOpen(false);
-                }} 
+                }}
                 className="profile-dropdown-item"
               >
                 <Settings size={16} />
@@ -112,7 +111,7 @@ export default function Header({
               </button>
 
               {/* Dynamic Telegram status row inside dropdown */}
-              <button 
+              <button
                 onClick={() => {
                   setIsTelegramModalOpen(true);
                   setIsDropdownOpen(false);
@@ -128,14 +127,14 @@ export default function Header({
                   <span>Connect Telegram</span>
                 )}
               </button>
-              
+
               <div className="profile-dropdown-divider" />
-              
-              <button 
+
+              <button
                 onClick={() => {
                   onLogout();
                   setIsDropdownOpen(false);
-                }} 
+                }}
                 className="profile-dropdown-item danger"
               >
                 <LogOut size={16} />
@@ -174,7 +173,14 @@ export default function Header({
           className={`tab-btn ${activeTab === 'prediction' ? 'active' : ''}`}
         >
           <TrendingUp size={16} />
-          Prediksi Keuangan
+          Financial Prediction
+        </button>
+        <button
+          onClick={() => setActiveTab('investment')}
+          className={`tab-btn ${activeTab === 'investment' ? 'active' : ''}`}
+        >
+          <Coins size={16} />
+          Smart allocation
         </button>
         {isSecretUnlocked && (
           <button
@@ -182,13 +188,13 @@ export default function Header({
             className={`tab-btn ${activeTab === 'labeling' ? 'active' : ''}`}
           >
             <Sparkles size={16} className="text-amber-500" />
-            Pelabelan AI
+            AI Labeling
           </button>
         )}
       </div>
 
       {/* Profile Editing Modal */}
-      <UserProfileModal 
+      <UserProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         userSession={userSession}

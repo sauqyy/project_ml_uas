@@ -1,10 +1,10 @@
 import React from 'react';
 import MetricCard from './MetricCard';
 import RecentExpenses from './RecentExpenses';
-import { DailySpendingTrend, SpendingByCategory, ExpensesByCategory } from './Charts';
+import { DailySpendingTrend, SpendingByCategory } from './Charts';
 import AnomalyDetector from './AnomalyDetector';
 
-export default function Dashboard({ expenses, onDelete, onEditClick, totalSpent, transactionCount, avgTransaction, currencySymbol = '$' }) {
+export default function Dashboard({ expenses, onDelete, onEditClick, totalSpent, transactionCount, avgTransaction, currencySymbol = '$', categoryColors = {} }) {
     return (
         <div className="dashboard-grid h-full">
             {/* Left Column: Recent Expenses LIST */}
@@ -25,16 +25,11 @@ export default function Dashboard({ expenses, onDelete, onEditClick, totalSpent,
                 {/* Row 2: Charts (Line & Pie) */}
                 <div className="charts-row">
                     <DailySpendingTrend expenses={expenses} />
-                    <SpendingByCategory expenses={expenses} />
+                    <SpendingByCategory expenses={expenses} categoryColors={categoryColors} />
                 </div>
 
                 {/* Row 3: Anomaly Detection */}
                 <AnomalyDetector expenses={expenses} currencySymbol={currencySymbol} />
-
-                {/* Row 4: Bar Chart */}
-                <div style={{ height: '300px' }}>
-                    <ExpensesByCategory expenses={expenses} />
-                </div>
 
             </div>
         </div>

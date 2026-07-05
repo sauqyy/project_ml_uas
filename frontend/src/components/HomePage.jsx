@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRight, Star, Sparkles, BookOpen, BarChart2, Shield, Heart } from 'lucide-react';
+import logoPng from '../assets/logo.png';
 
 export default function HomePage({ onNavigate }) {
   const [toggleActive, setToggleActive] = useState('simpan');
@@ -31,10 +32,8 @@ export default function HomePage({ onNavigate }) {
       {/* Navbar */}
       <nav className="home-nav">
         <div className="home-nav-logo" onClick={() => onNavigate('home')} style={{ cursor: 'pointer' }}>
-          <div className="home-nav-logo-icon">
-            <span className="logo-m-text">M</span>
-          </div>
-          money mind
+          <img src={logoPng} alt="Money Mind Logo" style={{ width: '32px', height: '32px', borderRadius: '6px' }} />
+          moneymind
         </div>
         
         <div className="home-nav-menu">
@@ -500,9 +499,7 @@ export default function HomePage({ onNavigate }) {
         <div className="footer-grid-container">
           <div className="footer-brand-column">
             <div className="footer-brand-logo">
-              <div className="home-nav-logo-icon" style={{ padding: '0.35rem', borderRadius: '0.5rem' }}>
-                <span className="logo-m-text" style={{ fontSize: '0.8rem' }}>M</span>
-              </div>
+              <img src={logoPng} alt="Money Mind Logo" style={{ width: '28px', height: '28px', borderRadius: '5px' }} />
               money mind
             </div>
             <p className="footer-brand-desc">
