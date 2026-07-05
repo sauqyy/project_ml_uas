@@ -33,3 +33,6 @@ node-v20.11.1-win-x64/
 
 # Runtime ML cache (model Prophet & kamus personal per user, regenerate otomatis)
 backend/storage/
+
+# Cloudflared executable
+cloudflared.exe

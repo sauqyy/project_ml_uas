@@ -8,6 +8,10 @@ import os
 # Force UTF-8 encoding on stdout/stderr to prevent Windows console encoding issues (e.g. easyocr progress bars)
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
+
+from dotenv import load_dotenv
+load_dotenv()
+
 import io
 import csv
 import re
@@ -1260,6 +1264,9 @@ def analyze_receipt_locally(image_bytes):
         return {"error": f"Gagal memproses gambar secara lokal: {str(e)}"}
 
 def start_telegram_bot():
+    if not TELEGRAM_BOT_TOKEN:
+        print("Telegram Bot Token is not provided. Bot feature is disabled.")
+        return
     bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
     
     @bot.message_handler(commands=['start', 'help'])
@@ -1623,4 +1630,4 @@ if not globals().get("_bot_thread_started", False):
 if __name__ == "__main__":
     # Get port from environment variable (Render sets this dynamically)
     port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port, debug=app.debug)
+    app.run(host="127.0.0.1", port=port, debug=app.debug)
