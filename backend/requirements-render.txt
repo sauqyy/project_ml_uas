@@ -1,0 +1,26 @@
+# Requirements untuk deploy Render FREE plan (512MB RAM).
+# TANPA OCR (easyocr/torch/Pillow) & TANPA statsmodels — supaya muat di 512MB.
+# Semua fitur jalan KECUALI foto struk di Telegram (OCR). Fitur lain (login,
+# kategorisasi, forecast Prophet, budget, anomali, bot teks) tetap aktif.
+# Untuk versi dengan OCR, pakai backend/requirements.txt + plan Standard (2GB).
+
+# --- Core web & database ---
+Flask>=3.0.0
+flask-cors>=4.0.0
+sqlalchemy>=2.0.0
+pydantic>=2.0.0
+psycopg2-binary>=2.9.0
+
+# --- Machine Learning ---
+pandas>=2.0.0
+numpy>=1.20.0
+scikit-learn>=1.0.0
+prophet>=1.1.0
+joblib>=1.2.0
+
+# --- Telegram bot & parsing teks Gemini ---
+pyTelegramBotAPI>=4.12.0
+google-generativeai>=0.5.0
+
+# --- Production server ---
+gunicorn>=21.0.0

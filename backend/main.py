@@ -19,7 +19,6 @@ import google.generativeai as genai
 
 from database import SessionLocal, engine, Base
 import models
-import ai_models
 import ml_categorizer  # model kategorisasi baru (rules + NB + kamus personal)
 import ml_forecast     # Prophet forecast + budget monitor + anomali MAD
 
