@@ -27,7 +27,9 @@ import ml_forecast     # Prophet forecast + budget monitor + anomali MAD
 Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__, static_folder="static")
-app.debug = True
+# Debug default ON untuk dev lokal; di produksi (Render) set FLASK_DEBUG=0 supaya
+# pakai gunicorn dan bot Telegram ikut jalan (guard di bawah bergantung app.debug).
+app.debug = os.environ.get("FLASK_DEBUG", "1") == "1"
 CORS(app) # Enable CORS for all routes during development
 
 # Built-in demo account credentials
@@ -1622,4 +1624,4 @@ if not globals().get("_bot_thread_started", False):
 if __name__ == "__main__":
     # Get port from environment variable (Render sets this dynamically)
     port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=app.debug)

@@ -3,6 +3,7 @@ Flask>=3.0.0
 flask-cors>=4.0.0
 sqlalchemy>=2.0.0
 pydantic>=2.0.0
+psycopg2-binary>=2.9.0   # driver PostgreSQL (produksi/Render); tak dipakai kalau SQLite lokal
 
 # --- Machine Learning ---
 pandas>=2.0.0
@@ -17,6 +18,9 @@ pyTelegramBotAPI>=4.12.0
 google-generativeai>=0.5.0
 
 # --- OCR struk (opsional, hanya untuk fitur foto struk di Telegram) ---
+# easyocr menarik PyTorch. Di Render/Linux, install torch versi CPU DULU (lihat render.yaml
+# buildCommand: pip install torch --index-url https://download.pytorch.org/whl/cpu)
+# supaya tidak menarik paket CUDA ~2GB yang bikin build gagal / OOM.
 easyocr>=1.7.0
 Pillow>=9.0.0
 
