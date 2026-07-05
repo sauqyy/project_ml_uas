@@ -2,7 +2,7 @@
 title Money Mind Local Server
 echo ===================================================
 echo   Starting Money Mind Local Server...
-echo   Web App will open at http://localhost:8000
+echo   Web App will open at http://localhost:8555
 echo ===================================================
 echo.
 
@@ -10,10 +10,10 @@ echo.
 cd /d "%~dp0"
 
 :: Start the browser pointing to the local address
-start "" "http://localhost:8000"
+start "" "http://localhost:8555"
 
 :: Run the Flask backend server
 cd backend
-python main.py
+.\venv\Scripts\python.exe main.py
 
 pause

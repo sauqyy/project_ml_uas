@@ -85,9 +85,6 @@ export default function HomePage({ onNavigate }) {
               <button className="btn-glow-custom" onClick={() => onNavigate('login')}>
                 Get Started — Free →
               </button>
-              <button className="btn-ghost-custom" onClick={() => onNavigate('login')}>
-                Watch Demo
-              </button>
             </div>
 
             {/* Social Proof */}
