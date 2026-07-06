@@ -32,6 +32,8 @@ services:
       - key: FLASK_DEBUG
         value: "0"                 # WAJIB 0: pakai gunicorn + bot Telegram ikut jalan
       # DISABLE_TELEGRAM_BOT sengaja TIDAK diset di sini -> bot AKTIF di Render.
+      - key: OCR_REMOTE_URL        # Kirim foto struk ke endpoint OCR di Hugging Face (punya easyocr)
+        value: "https://raiarchv-moneymind.hf.space/api/ocr"
       - key: DATABASE_URL          # WAJIB: paste External URL Postgres yang SAMA dengan Hugging Face
         sync: false
       - key: TELEGRAM_BOT_TOKEN    # token bot dari BotFather
