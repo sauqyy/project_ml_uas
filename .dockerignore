@@ -1,0 +1,12 @@
+# Konteks build HF hanya butuh backend/. Kecualikan yang berat/tak perlu.
+frontend/node_modules
+frontend/src
+frontend/public
+frontend/dist
+**/__pycache__
+*.pyc
+backend/finance.db
+.git
+.venv
+venv
+*.md

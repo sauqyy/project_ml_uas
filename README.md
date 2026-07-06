@@ -1,3 +1,13 @@
+---
+title: MoneyMind
+emoji: 💰
+colorFrom: green
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # MoneyMind — Aplikasi Manajemen Keuangan berbasis Machine Learning
 
 Aplikasi pencatatan & analisis keuangan pribadi. Terdiri dari **backend Flask (Python)** dan **frontend React (Vite)**.
