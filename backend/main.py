@@ -1259,6 +1259,57 @@ def analyze_receipt_locally(image_bytes):
         print(f"Error in local receipt analysis: {e}")
         return {"error": f"Gagal memproses gambar secara lokal: {str(e)}"}
 
+
+def analyze_receipt(image_bytes):
+    """
+    Router OCR untuk arsitektur split (bot di Render, OCR di Hugging Face).
+    - Kalau OCR_REMOTE_URL diset (mis. di host bot yang TANPA easyocr), gambar
+      dikirim ke endpoint /api/ocr di host lain yang PUNYA easyocr + RAM besar.
+    - Kalau tidak diset, diproses lokal seperti biasa (analyze_receipt_locally).
+    """
+    remote_url = os.environ.get("OCR_REMOTE_URL", "").strip()
+    if not remote_url:
+        return analyze_receipt_locally(image_bytes)
+    try:
+        import requests
+        headers = {}
+        secret = os.environ.get("OCR_SHARED_SECRET", "").strip()
+        if secret:
+            headers["X-OCR-Secret"] = secret
+        # HF Space bisa cold-start (~30-60s) kalau baru bangun dari sleep.
+        resp = requests.post(
+            remote_url,
+            files={"image": ("receipt.jpg", image_bytes, "application/octet-stream")},
+            headers=headers,
+            timeout=120,
+        )
+        if resp.status_code != 200:
+            return {"error": f"Server OCR membalas status {resp.status_code}."}
+        return resp.json()
+    except Exception as e:
+        print(f"Error calling remote OCR ({remote_url}): {e}")
+        return {"error": f"Gagal menghubungi server OCR: {str(e)}"}
+
+
+@app.route("/api/ocr", methods=["POST"])
+def api_ocr():
+    """
+    Endpoint OCR struk. Dijalankan di host yang PUNYA easyocr (mis. Hugging Face,
+    RAM 16GB). Menerima file gambar (form field 'image'), mengembalikan
+    {'desc','amount'} atau {'error'}. Dipakai bot Telegram di host lain yang tak
+    punya easyocr (lihat OCR_REMOTE_URL). Endpoint ini aktif walau bot dimatikan.
+    Proteksi opsional: set OCR_SHARED_SECRET (di HF & Render) untuk mewajibkan
+    header X-OCR-Secret agar endpoint tak bisa dipakai sembarang orang.
+    """
+    shared = os.environ.get("OCR_SHARED_SECRET", "").strip()
+    if shared and request.headers.get("X-OCR-Secret", "") != shared:
+        return jsonify({"error": "Unauthorized"}), 401
+    f = request.files.get("image")
+    if f is None:
+        return jsonify({"error": "Tidak ada file gambar (field 'image')."}), 400
+    return jsonify(analyze_receipt_locally(f.read()))
+
+
 def start_telegram_bot():
     bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
     
@@ -1492,8 +1543,9 @@ def start_telegram_bot():
             file_info = bot.get_file(photo.file_id)
             downloaded_file = bot.download_file(file_info.file_path)
             
-            # 2. Ekstrak deskripsi dan nominal belanja menggunakan EasyOCR + Decision Tree secara lokal
-            parsed = analyze_receipt_locally(downloaded_file)
+            # 2. Ekstrak deskripsi dan nominal belanja. Router: lokal (kalau ada easyocr)
+            #    atau kirim ke server OCR jarak jauh via OCR_REMOTE_URL (mis. Hugging Face).
+            parsed = analyze_receipt(downloaded_file)
             
             if not parsed:
                 bot.edit_message_text(
