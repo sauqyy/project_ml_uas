@@ -419,19 +419,82 @@ h4 {
     padding: 0.75rem;
   }
 
-  /* Tab bar: smaller text, icon-only on very small, scrollable */
+  /* Tab bar: jangan dipaksa flex:1 (bikin label panjang saling tumpuk di HP).
+     Buat bisa digeser horizontal, tiap tombol selebar isinya & tak menyusut. */
+  .dashboard-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;          /* Firefox: sembunyikan scrollbar */
+  }
+
+  .dashboard-tabs::-webkit-scrollbar {
+    display: none;                  /* Chrome/Safari: sembunyikan scrollbar */
+  }
+
+  .dashboard-tabs .tab-btn {
+    flex: 0 0 auto;                 /* ukuran sesuai isi, tidak menyusut */
+    white-space: nowrap;            /* teks tidak wrap/tumpuk */
+  }
+
   .tab-btn {
     font-size: 0.75rem;
-    gap: 0.25rem;
-    padding: 0.4rem 0.35rem;
-    flex: 1;
-    min-width: 0;
+    gap: 0.3rem;
+    padding: 0.45rem 0.7rem;
   }
 
   .tab-btn svg {
     width: 14px;
     height: 14px;
     flex-shrink: 0;
+  }
+
+  /* Header atas: rapikan agar logo + judul + profil tak berdesakan */
+  .dashboard-header-top {
+    gap: 0.6rem;
+  }
+
+  .dashboard-header-top > img {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .dashboard-header-top h1 {
+    font-size: 1.05rem;
+    line-height: 1.2;
+  }
+
+  /* Subjudul panjang disembunyikan di HP (hemat ruang) */
+  .dashboard-header-top p {
+    display: none;
+  }
+
+  /* Nama user disembunyikan; cukup avatar + panah (hemat ruang) */
+  .profile-trigger-info {
+    display: none;
+  }
+
+  /* Tombol Connect Telegram standalone disembunyikan di HP —
+     aksi yang sama tetap tersedia di menu profil (dropdown).
+     !important karena ada rule .btn-telegram-connect lain lebih bawah di file. */
+  .btn-telegram-connect {
+    display: none !important;
+  }
+
+  /* Cegah grid/kartu memaksa lebar melebihi layar (default min-width:auto pada
+     grid/flex item bikin konten panjang mendorong lebar → overflow di HP). */
+  .main-content-grid,
+  .stats-grid,
+  .charts-row,
+  .dashboard-grid {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .card {
+    min-width: 0;
   }
 
   /* Stats grid: stack to single column */

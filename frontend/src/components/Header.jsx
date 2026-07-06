@@ -41,7 +41,7 @@ export default function Header({
 
   return (
     <div className="flex flex-col gap-6 mb-8">
-      <div className="flex items-center gap-3">
+      <div className="dashboard-header-top flex items-center gap-3">
         {/* Brand Logo */}
         <img src={logoPng} alt="Money Mind Logo" style={{ width: '64px', height: '64px', borderRadius: '8px' }} />
         <div className="flex-1">
@@ -146,7 +146,7 @@ export default function Header({
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex bg-white p-1 rounded-xl w-full mx-auto shadow-sm border border-slate-200" style={{ maxWidth: '56rem' }}>
+      <div className="dashboard-tabs flex bg-white p-1 rounded-xl w-full mx-auto shadow-sm border border-slate-200" style={{ maxWidth: '56rem' }}>
         <button
           onClick={() => setActiveTab('dashboard')}
           className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
