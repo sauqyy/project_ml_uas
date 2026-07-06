@@ -18,11 +18,12 @@ pyTelegramBotAPI>=4.12.0
 google-generativeai>=0.5.0
 
 # --- OCR struk (opsional, hanya untuk fitur foto struk di Telegram) ---
-# easyocr menarik PyTorch + torchvision. Di Render/Linux, install torch DAN torchvision
-# versi CPU yang COCOK (di-pin) DULU, sebelum requirements ini:
-#   pip install --no-cache-dir torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
-# Kalau versi torch<->torchvision mismatch / beda varian -> error "torchvision::nms does not exist".
-# Pasangan cocok lain: 2.2.2/0.17.2, 2.4.1/0.19.1, 2.5.1/0.20.1.
+# easyocr menarik PyTorch + torchvision. Di Render/Linux, install torch+torchvision CPU DULU,
+# lalu KUNCI versinya pakai constraint supaya langkah `pip install -r` ini tidak menimpanya
+# dengan torchvision PyPI yang mismatch (penyebab error "torchvision::nms does not exist"):
+#   pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip freeze | grep -iE "^(torch|torchvision)==" > /tmp/torch-constraint.txt
+#   pip install -c /tmp/torch-constraint.txt -r backend/requirements.txt
 easyocr>=1.7.0
 Pillow>=9.0.0
 
