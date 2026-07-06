@@ -1,41 +1,40 @@
-# Blueprint deploy Render — MoneyMind (dengan OCR struk)
-# Cara pakai: Render Dashboard > New > Blueprint > pilih repo ini.
+# Blueprint deploy Render — MoneyMind (BOT TELEGRAM only, versi ringan)
 #
-# Catatan penting:
-# - Plan "standard" (2GB RAM) DIBUTUHKAN karena easyocr/PyTorch berat. Free/Starter (512MB) akan OOM.
-# - Frontend TIDAK di-build di Render; folder backend/static sudah berisi hasil build (di-commit).
-#   Jadi buildCommand cukup install Python deps. (Jalankan `npm run build` lokal lalu commit
-#   backend/static setiap kali frontend berubah.)
-# - torch CPU di-install duluan supaya tidak menarik paket CUDA raksasa.
+# Arsitektur: Web + OCR di-host di Hugging Face (yang MEMBLOKIR Telegram),
+# sedangkan BOT Telegram di-host di Render (Telegram tidak diblokir). Keduanya
+# menunjuk DATABASE_URL Postgres yang SAMA -> data sinkron.
+#
+# Cara pakai: Render Dashboard > New > Blueprint > pilih repo ini.
+# Lalu isi 3 secret (DATABASE_URL, TELEGRAM_BOT_TOKEN, GEMINI_API_KEY) di dashboard.
+#
+# Catatan:
+# - TANPA OCR/torch -> muat di plan FREE (512MB).
+# - DATABASE_URL diisi MANUAL (sync:false) dengan External URL Postgres yang sama
+#   dengan yang dipakai Space Hugging Face. JANGAN bikin database baru di sini,
+#   supaya data tetap satu sumber.
+# - Render free "tidur" setelah 15 menit idle; ping URL-nya (mis. cron-job.org)
+#   kalau mau bot online 24/7.
 
 services:
   - type: web
-    name: moneymind
+    name: moneymind-bot
     runtime: python
-    plan: standard
+    plan: free
     region: singapore
     buildCommand: >-
       pip install --upgrade pip &&
-      pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu &&
-      pip freeze | grep -iE "^(torch|torchvision)==" > /tmp/torch-constraint.txt &&
-      pip install -c /tmp/torch-constraint.txt -r backend/requirements.txt
+      pip install --no-cache-dir -r backend/requirements-render.txt
     startCommand: cd backend && gunicorn main:app --workers 1 --timeout 300 --bind 0.0.0.0:$PORT
     healthCheckPath: /api/categories
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
       - key: FLASK_DEBUG
-        value: "0"                 # WAJIB 0 di produksi: pakai gunicorn + bot Telegram ikut jalan
-      - key: DATABASE_URL
-        fromDatabase:
-          name: moneymind-db
-          property: connectionString
-      - key: TELEGRAM_BOT_TOKEN     # opsional — isi di dashboard kalau pakai bot Telegram
+        value: "0"                 # WAJIB 0: pakai gunicorn + bot Telegram ikut jalan
+      # DISABLE_TELEGRAM_BOT sengaja TIDAK diset di sini -> bot AKTIF di Render.
+      - key: DATABASE_URL          # WAJIB: paste External URL Postgres yang SAMA dengan Hugging Face
         sync: false
-      - key: GEMINI_API_KEY         # opsional — isi di dashboard kalau pakai parsing teks Gemini
+      - key: TELEGRAM_BOT_TOKEN    # token bot dari BotFather
         sync: false
-
-databases:
-  - name: moneymind-db
-    plan: basic-256mb              # Postgres berbayar termurah (persisten). Bisa diganti "free" (expire 30 hari).
-    region: singapore
+      - key: GEMINI_API_KEY        # key parsing teks Gemini
+        sync: false
