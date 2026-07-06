@@ -1612,8 +1612,14 @@ def serve_frontend(path):
         resp.headers["Expires"] = "0"
         return resp
 
-# Start Telegram Bot in a background thread (runs both on local debug server and production WSGI Gunicorn)
-if not globals().get("_bot_thread_started", False):
+# Start Telegram Bot in a background thread (runs both on local debug server and production WSGI Gunicorn).
+# Set DISABLE_TELEGRAM_BOT=1 di host yang MEMBLOKIR api.telegram.org (mis. Hugging Face Spaces)
+# supaya thread bot tidak dijalankan — mencegah spam error "Read timed out" di log.
+# Bot dijalankan di host lain (mis. Render) yang menunjuk DATABASE_URL sama.
+_bot_disabled = os.environ.get("DISABLE_TELEGRAM_BOT", "0") == "1"
+if _bot_disabled:
+    print("Telegram Bot dinonaktifkan (DISABLE_TELEGRAM_BOT=1).")
+elif not globals().get("_bot_thread_started", False):
     # Only launch the bot in the main Werkzeug reloader child process to avoid duplicate bot instances in debug mode
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         globals()["_bot_thread_started"] = True
