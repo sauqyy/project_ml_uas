@@ -96,7 +96,7 @@ export default function TelegramModal({ isOpen, onClose, status, onDisconnect, o
               <div className="flex gap-3 text-sm text-slate-600">
                 <div className="bg-blue-50 text-blue-600 font-bold w-6 h-6 rounded-full flex items-center justify-center shrink-0">1</div>
                 <div className="flex-1">
-                  Open Telegram and search for our official bot: <a href="https://t.me/MoneyMindJournal_bot" target="_blank" rel="noreferrer" className="text-blue-500 font-semibold underline">@MoneyMindJournal_bot</a>
+                  Open Telegram and search for our official bot: <a href="https://t.me/MoneyMindML_bot" target="_blank" rel="noreferrer" className="text-blue-500 font-semibold underline">@MoneyMindML_bot</a>
                 </div>
               </div>
               

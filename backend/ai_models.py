@@ -14,16 +14,16 @@ def get_category_by_rule(text):
     teks = str(text).strip().lower()
     # 1. Kategori Transportasi
     if any(x in teks for x in ['grab', 'gojek', 'gocar', 'goride', 'grabbike', 'maxim', 'taxi', 'taksi', 'ojek', 'krl', 'bensin', 'pertamina']):
-        return 'Transportasi'
+        return 'Transportation'
     # 2. Kategori Makanan
     elif any(x in teks for x in ['makan', 'minum', 'geprek', 'nasi', 'mie', 'bakso', 'kopi', 'cafe', 'coffee', 'gofood', 'grabfood', 'shopeefood', 'warung', 'kantin', 'snack', 'jajan', 'familymart', 'danusan']):
-        return 'Makanan'
+        return 'Food & Dining'
     # 3. Kategori Kebutuhan
     elif any(x in teks for x in ['alfamart', 'indomaret', 'alfa', 'indo', 'shopee', 'tokopedia', 'supermarket', 'beli', 'toko', 'baju', 'skincare', 'sabun', 'odol']):
-        return 'Kebutuhan'
+        return 'Shopping'
     # 4. Selain itu masuk Lain-lain
     else:
-        return 'Lain-lain'
+        return 'Other'
 
 def train_and_classify_categories(transactions):
     """

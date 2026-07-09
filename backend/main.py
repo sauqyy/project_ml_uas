@@ -89,9 +89,6 @@ def seed_db():
                 models.Category(name="Food & Dining"),
                 models.Category(name="Shopping"),
                 models.Category(name="Transportation"),
-                models.Category(name="Bills & Utilities"),
-                models.Category(name="Entertainment"),
-                models.Category(name="Healthcare"),
                 models.Category(name="Other")
             ]
             db.add_all(default_categories)
@@ -515,7 +512,7 @@ def get_anomalies():
             result.append({
                 "id": a["id"],
                 "title": a["transaksi"],
-                "category": a.get("category", "Lain-lain"),
+                "category": a.get("category", "Other"),
                 "level": a["anomaly_level"],
                 "amount": a["jumlah"],
                 "date": a["tanggal"],
@@ -620,7 +617,7 @@ def import_dataset():
             dt = r["Tanggal Transaksi"]
             desc = str(r["Transaksi"])
             amt = float(r["Jumlah_abs"])
-            cat = predictions_map.get(desc.strip(), "Lain-lain")
+            cat = predictions_map.get(desc.strip(), "Other")
             db.add(models.Expense(
                 user_email=user_email,
                 amount=amt,
@@ -718,7 +715,7 @@ def upload_csv():
                 display_date = parsed_dt.strftime("%a, %b %d, %Y")
                 
                 if is_negative:
-                    category = predictions_map.get(desc, 'Lain-lain')
+                    category = predictions_map.get(desc, 'Other')
                     expense = models.Expense(
                         user_email=user_email,
                         amount=amount_val,
@@ -767,7 +764,7 @@ def upload_csv():
                     expense = models.Expense(
                         user_email=user_email,
                         amount=amount_val,
-                        category=category_source or 'Lain-lain',
+                        category=category_source or 'Other',
                         desc=desc,
                         date=formatted_date,
                         displayDate=display_date
@@ -1117,7 +1114,7 @@ def parse_expense_with_gemini(text, categories_list):
          "is_expense": true,
          "desc": "deskripsi singkat transaksi (gunakan huruf kapital di awal setiap kata, contoh: 'Makan Bakso', 'Bensin Pertamax')",
          "amount": nominal angka saja (integer, konversikan kata seperti 'ribu' ke 1000, 'jt' atau 'juta' ke 1000000),
-         "category": "pilih kategori yang paling cocok dari daftar di atas. Jika tidak ada yang cocok sama sekali, pilih 'Lain-lain'"
+         "category": "pilih kategori yang paling cocok dari daftar di atas. Jika tidak ada yang cocok sama sekali, pilih 'Other'"
        }}
     2. Jika teks BUKAN merupakan informasi pengeluaran uang (contoh: "halo", "siapa kamu", "tolong beri saran hemat", "berapa pengeluaran saya"):
        Kembalikan JSON dengan format berikut:
@@ -1406,7 +1403,7 @@ def start_telegram_bot():
             categories_list = [c.name for c in categories_entities]
         except Exception as e:
             print(f"Error fetching categories: {e}")
-            categories_list = ["Makanan", "Transportasi", "Kebutuhan", "Lain-lain"]
+            categories_list = ["Food & Dining", "Transportation", "Shopping", "Other"]
         finally:
             db.close()
             
@@ -1425,7 +1422,7 @@ def start_telegram_bot():
                 category = ml_categorizer.categorize(desc, user_email)["category"]
             except Exception as e:
                 print(f"Categorizer (telegram text) failed: {e}")
-                category = parsed.get("category") or "Lain-lain"
+                category = parsed.get("category") or "Other"
 
             # Simpan transaksi ke database SQLite
             db = get_db()
@@ -1534,7 +1531,7 @@ def start_telegram_bot():
                 category = ml_categorizer.categorize(desc, user_email)["category"]
             except Exception as e:
                 print(f"Error classifying category locally: {e}")
-                category = "Lain-lain"
+                category = "Other"
                 
             # 4. Simpan transaksi ke database SQLite
             db = get_db()

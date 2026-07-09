@@ -7,8 +7,8 @@ Adaptasi dari `Model Tambahan/pipeline_kategorisasi.py`. Alur prediksi 4 lapis:
     3. Naive Bayes (TF-IDF + MultinomialNB)     -> hasil ML jika confidence >= threshold
     4. Fallback "Lain-lain" (low confidence)    -> ditandai perlu review user
 
-Output kategori model: Transportasi, Food & Dining, Belanja, Lain2.
-Di app, "Lain2" dipetakan ke "Lain-lain" agar konsisten dengan kategori & warna app.
+10: Output kategori model: Transportasi, Food & Dining, Belanja, Lain2.
+11: Di app, "Lain2" dipetakan ke "Other" agar konsisten dengan kategori & warna app.
 """
 
 import re
@@ -74,13 +74,13 @@ RULES = [
 
 # Pemetaan kategori output model -> kategori kanonik di app MoneyMind
 CATEGORY_MAP = {
-    "Transportasi": "Transportasi",
+    "Transportasi": "Transportation",
     "Food & Dining": "Food & Dining",
-    "Belanja": "Belanja",
-    "Lain2": "Lain-lain",
+    "Belanja": "Shopping",
+    "Lain2": "Other",
 }
 # Kategori app yang dihasilkan model (untuk seeding tabel categories)
-APP_CATEGORIES = ["Transportasi", "Food & Dining", "Belanja", "Lain-lain"]
+APP_CATEGORIES = ["Transportation", "Food & Dining", "Shopping", "Other"]
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(_BASE_DIR, "model_nb_kategori.pkl")
@@ -170,7 +170,7 @@ class Kategorizer:
 
         # 3. Model ML
         if not clean:
-            return "Lain-lain", "low_confidence_need_review", 0.0
+            return "Other", "low_confidence_need_review", 0.0
         proba_arr = self.pipeline.predict_proba([clean])[0]
         idx_max = int(proba_arr.argmax())
         hasil_ml = self.pipeline.classes_[idx_max]
@@ -178,7 +178,7 @@ class Kategorizer:
 
         # 4. Confidence rendah -> perlu review
         if conf < self.threshold:
-            return "Lain-lain", "low_confidence_need_review", conf
+            return "Other", "low_confidence_need_review", conf
 
         return _map_category(str(hasil_ml)), "ml", conf
 

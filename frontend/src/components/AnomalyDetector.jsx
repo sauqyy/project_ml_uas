@@ -18,11 +18,9 @@ const getIcon = (category) => {
         case 'Makanan & Minuman':
             return Utensils;
         case 'Shopping':
-        case 'Belanja':
         case 'Perabotan':
             return ShoppingBag;
         case 'Transportation':
-        case 'Transportasi':
             return Car;
         case 'Tiket Pesawat':
         case 'Travel':

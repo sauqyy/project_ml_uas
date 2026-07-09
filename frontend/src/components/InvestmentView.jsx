@@ -5,20 +5,9 @@ import { TrendingUp, Coins, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft
 // Color Palette for categories
 const CATEGORY_COLORS = {
     'Food & Dining': '#3b82f6', // blue
-    'Makanan': '#3b82f6',
     'Shopping': '#10b981', // emerald
-    'Spending': '#10b981',
     'Transportation': '#f59e0b', // amber
-    'Transportasi': '#f59e0b',
-    'Bills & Utilities': '#ef4444', // red
-    'Tagihan': '#ef4444',
-    'Entertainment': '#8b5cf6', // violet
-    'Hiburan': '#8b5cf6',
-    'Healthcare': '#ec4899', // pink
-    'Kesehatan': '#ec4899',
-    'Other': '#64748b', // slate
-    'Lain-lain': '#64748b',
-    'Kebutuhan': '#06b6d4', // cyan
+    'Other': '#64748b' // slate
 };
 
 const DEFAULT_COLOR = '#94a3b8';
@@ -493,7 +482,7 @@ export default function InvestmentView({ expenses = [], incomes = [], currencySy
     const cutRecommendations = useMemo(() => {
         if (overspendAmount <= 0) return { items: [], fullyResolved: true, remainingGap: 0 };
         const recommendations = [];
-        const discretionaryCats = ['Shopping', 'Belanja', 'Food & Dining', 'Makanan', 'Entertainment', 'Hiburan', 'Other', 'Lain-lain'];
+        const discretionaryCats = ['Shopping', 'Food & Dining', 'Entertainment', 'Other'];
         let restToCut = overspendAmount;
 
         const activeExpensesData = categoryExpenses;

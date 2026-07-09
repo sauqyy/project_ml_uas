@@ -5,16 +5,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 const COLORS = {
     'Food & Dining': '#3b82f6',
     'Shopping': '#10b981',
-    'Belanja': '#10b981',
     'Transportation': '#facc15',
-    'Transportasi': '#facc15',
-    'Bills & Utilities': '#f97316',
-    'Entertainment': '#c084fc',
-    'Healthcare': '#818cf8',
-    'Other': '#94a3b8',
-    'Lain-lain': '#94a3b8',
-    'Makanan': '#3b82f6',
-    'Kebutuhan': '#10b981'
+    'Other': '#94a3b8'
 };
 
 // --- Helper: Format number as Rp with comma separators ---

@@ -429,7 +429,7 @@ def _expenses_to_df(expenses: list) -> pd.DataFrame:
             "Transaksi": e.get("desc") or "",
             "Tanggal Transaksi": dt,
             "Jumlah_abs": amt,
-            "Kategori": e.get("category") or "Lain-lain",
+            "Kategori": e.get("category") or "Other",
         })
     return pd.DataFrame(rows, columns=["ID Transaksi", "Transaksi", "Tanggal Transaksi", "Jumlah_abs", "Kategori"])
 
@@ -476,7 +476,7 @@ def pending_anomalies(user_email: str, expenses: list, limit: int = 20) -> list:
             "jumlah": round(float(r["Jumlah_abs"]), 2),
             "median_pengeluaran": round(float(r["median_pengeluaran"]), 2),
             "anomaly_level": str(r["anomaly_level"]),
-            "category": str(r["Kategori"]) if "Kategori" in r else "Lain-lain"
+            "category": str(r["Kategori"]) if "Kategori" in r else "Other"
         })
     return out
 

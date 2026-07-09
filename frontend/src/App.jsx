@@ -20,14 +20,7 @@ const DEFAULT_COLORS = {
   'Food & Dining': '#3b82f6',
   'Shopping': '#10b981',
   'Transportation': '#facc15',
-  'Bills & Utilities': '#f97316',
-  'Entertainment': '#c084fc',
-  'Healthcare': '#818cf8',
-  'Other': '#94a3b8',
-  'Transportasi': '#facc15',
-  'Makanan': '#3b82f6',
-  'Kebutuhan': '#10b981',
-  'Lain-lain': '#94a3b8'
+  'Other': '#94a3b8'
 };
 
 const apiFetch = (url, options = {}) => {
